@@ -2,40 +2,54 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <title>Sticker Maker</title>
-  <link rel="stylesheet" href="style.css">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sticker Maker Pro - Full Control</title>
+  <style>
+    body { font-family: sans-serif; background: #f0f0f0; display: flex; flex-direction: column; align-items: center; }
+    .container { display: flex; gap: 20px; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
+    .controls { display: flex; flex-direction: column; gap: 10px; width: 250px; }
+    canvas { border: 2px solid #ddd; background-color: #fff; }
+    label { font-size: 12px; font-weight: bold; color: #555; margin-top: 5px; }
+    hr { width: 100%; border: 0; border-top: 1px solid #eee; }
+    button { padding: 10px; cursor: pointer; border-radius: 5px; border: none; background: #007bff; color: white; font-weight: bold; }
+    button:hover { background: #0056b3; }
+    .delete-btn { background: #ff4444; }
+    .save-btn { background: #28a745; }
+  </style>
 </head>
 <body>
   <h1>Sticker Design</h1>
   <div class="container">
-  <div class="controls">
-    <label>Team Name</label>
-    <input type="text" id="text" placeholder="TEAM NAME">
-
-    <label>text color</label>
-    <input type="color" id="textColor" value="#ffffff">
-
-    <label>background color</label>
-    <input type="color" id="bgColor" value="#1e90ff">
-
-    <label>font</label>
-    <select id="font">
-      <option value="Impact">Impact（応援向け）</option>
-      <option value="Arial Black">Arial Black</option>
-      <option value="Verdana">Verdana</option>
-      <option value="sans-serif">Sans-serif</option>
-      <option value="serif">Serif</option>
-    </select>
-
-    <label>font size</label>
-    <input type="range" id="fontSize" min="20" max="60" value="36">
-
-    <button onclick="drawSticker()">反映</button>
+    <div class="controls">
+      <label>テキスト内容</label>
+      <input type="text" id="text" placeholder="文字を入力">
+      <button id="addText">＋ テキストを追加</button>
+      <hr>
+      <label>文字の色 / 縁取りの色</label>
+      <div style="display: flex; gap: 5px;">
+        <input type="color" id="textColor" value="#ffffff">
+        <input type="color" id="strokeColor" value="#000000">
+      </div>
+      <label>縁取りの太さ</label>
+      <input type="range" id="strokeWidth" min="0" max="15" value="0">
+      <label>フォント</label>
+      <select id="font">
+        <option value="Impact">Impact（応援・太）</option>
+        <option value="Arial Black">Arial Black</option>
+        <option value="Georgia">Georgia（明朝系）</option>
+        <option value="Comic Sans MS">Comic Sans MS</option>
+        <option value="sans-serif">標準</option>
+      </select>
+      <label>基本サイズ</label>
+      <input type="range" id="fontSize" min="10" max="120" value="40">
+      <hr>
+      <label>背景色</label>
+      <input type="color" id="bgColor" value="#1e90ff">
+      <button id="deleteText" class="delete-btn">選択中の文字を削除</button>
+      <button id="saveImage" class="save-btn">画像を保存</button>
+    </div>
+    <canvas id="sticker" width="500" height="500"></canvas>
   </div>
-
-  <canvas id="sticker" width="300" height="300"></canvas>
-</div>
-
   <script src="script.js"></script>
 </body>
 </html>

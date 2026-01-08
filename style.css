@@ -35,3 +35,10 @@ canvas {
   border-radius: 15px;
   background: white;
 }
+
+button {
+  padding: 8px;
+  cursor: pointer;
+  border: none;
+  border-radius: 4px;
+}
