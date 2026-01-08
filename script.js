@@ -17,17 +17,21 @@ document.addEventListener("DOMContentLoaded", () => {
   // 状態管理
   let textLayers = [];
   let selectedIndex = -1;
-  let activeHandle = null; // 操作中のハンドル ('tl', 'tr', 'rotate' など)
+  let activeHandle = null;
   let isDragging = false;
   
-  // ドラッグ開始時のオフセットや初期値を保存
   let dragStart = { x: 0, y: 0 };
   let initialProps = {}; 
 
-  // 定数：デザイン調整
-  const HANDLE_SIZE = 10;     // ハンドルの大きさ
-  const ROTATE_HANDLE_OFFSET = 40; // 回転ハンドルの距離
+  // ===========================================================
+  // ★チューニング設定（ここをいじると操作感が変わります）
+  // ===========================================================
+  const VISUAL_HANDLE_SIZE = 8;    // 【見た目】ハンドルの半径
+  const HIT_HANDLE_RADIUS = 30;    // 【判定】ハンドルのクリック判定半径（見た目よりかなり大きく設定）
+  const BOX_PADDING = 20;          // 【余白】文字と選択枠の間の余白（広いほうがつかみやすい）
+  const ROTATE_HANDLE_OFFSET = 50; // 回転ハンドルの距離
   const COLOR_PRIMARY = "#00a8ff"; // 選択枠の色
+  // ===========================================================
 
   // -----------------------------------------------------------
   // 描画関連
@@ -40,48 +44,40 @@ document.addEventListener("DOMContentLoaded", () => {
     
     return {
       width: metrics.width,
-      // 高さが極端に小さい場合の最低値を保証
       height: actualHeight || layer.fontSize, 
       ascent: metrics.actualBoundingBoxAscent
     };
   }
 
   function drawSticker() {
-    // 1. 背景クリア
     ctx.fillStyle = bgColorInput.value;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     textLayers.forEach((layer, index) => {
       ctx.save();
       
-      // 座標変換：原点をオブジェクトの中心へ
       ctx.translate(layer.x, layer.y);
       ctx.rotate(layer.angle);
-      ctx.scale(layer.scale, layer.scale); // 全体スケール
+      ctx.scale(layer.scale, layer.scale);
 
       const metrics = getTextMetrics(layer);
       
-      // テキスト描画（中心基準）
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
 
-      // 縁取り
       if (layer.strokeWidth > 0) {
         ctx.strokeStyle = layer.strokeColor;
-        ctx.lineWidth = layer.strokeWidth / layer.scale; // スケールに依存しない太さ
+        ctx.lineWidth = layer.strokeWidth / layer.scale;
         ctx.lineJoin = "round";
         ctx.strokeText(layer.text, 0, 0);
       }
 
-      // 塗りつぶし
       ctx.fillStyle = layer.color;
-      // 横幅ストレッチ(scaleX)だけ個別に適用して描画
       ctx.save();
       ctx.scale(layer.stretchX, 1); 
       ctx.fillText(layer.text, 0, 0);
       ctx.restore();
 
-      // 選択状態のUI描画
       if (index === selectedIndex) {
         drawSelectionUI(metrics.width * layer.stretchX, metrics.height);
       }
@@ -90,44 +86,41 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  // 選択枠とハンドルの描画
   function drawSelectionUI(w, h) {
+    // 判定用にパディングを使用
+    const pad = BOX_PADDING;
     const halfW = w / 2;
     const halfH = h / 2;
-    const pad = 10; // 余白
 
     ctx.strokeStyle = COLOR_PRIMARY;
-    ctx.lineWidth = 1.5 / textLayers[selectedIndex].scale; // 線の太さを一定に保つ
+    ctx.lineWidth = 1.5 / textLayers[selectedIndex].scale;
     ctx.setLineDash([5, 3]);
 
     // 枠線
     ctx.strokeRect(-halfW - pad, -halfH - pad, w + pad * 2, h + pad * 2);
     ctx.setLineDash([]);
 
-    // ハンドル描画関数
     const drawHandle = (x, y, type) => {
       ctx.fillStyle = (type === 'rotate') ? "#fff" : COLOR_PRIMARY;
       ctx.strokeStyle = COLOR_PRIMARY;
       ctx.lineWidth = 2;
       ctx.beginPath();
-      // スケールに依存しない一定の大きさで描画
-      const size = HANDLE_SIZE / textLayers[selectedIndex].scale;
+      // 見た目は VISUAL_HANDLE_SIZE を使用
+      const size = VISUAL_HANDLE_SIZE / textLayers[selectedIndex].scale;
       ctx.arc(x, y, size, 0, Math.PI * 2);
       ctx.fill();
       ctx.stroke();
     };
 
-    // 四隅のハンドル（等倍リサイズ）
+    // ハンドル位置
     drawHandle(-halfW - pad, -halfH - pad, 'tl'); // 左上
     drawHandle(halfW + pad, -halfH - pad, 'tr');  // 右上
     drawHandle(halfW + pad, halfH + pad, 'br');   // 右下
     drawHandle(-halfW - pad, halfH + pad, 'bl');  // 左下
 
-    // 左右のハンドル（幅ストレッチ）
     drawHandle(-halfW - pad, 0, 'ml'); // 左
     drawHandle(halfW + pad, 0, 'mr');  // 右
 
-    // 回転ハンドル（上に飛び出す）
     ctx.beginPath();
     ctx.moveTo(0, -halfH - pad);
     ctx.lineTo(0, -halfH - pad - ROTATE_HANDLE_OFFSET / textLayers[selectedIndex].scale);
@@ -136,33 +129,33 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   // -----------------------------------------------------------
-  // 座標計算・当たり判定
+  // 座標計算・当たり判定（強化版）
   // -----------------------------------------------------------
 
-  // マウス座標をレイヤーのローカル座標系に変換
   function getLocalCoords(mx, my, layer) {
     const dx = mx - layer.x;
     const dy = my - layer.y;
-    // 逆回転行列
     return {
       x: dx * Math.cos(-layer.angle) - dy * Math.sin(-layer.angle),
       y: dx * Math.sin(-layer.angle) + dy * Math.cos(-layer.angle)
     };
   }
 
-  // 特定のポイント(hx, hy)にマウス(loc)があるか判定
+  // ★変更点：判定用の半径（HIT_HANDLE_RADIUS）を使用
   function isHitHandle(loc, hx, hy, scale) {
-    const size = (HANDLE_SIZE + 5) / scale; // 当たり判定は少し広めに
-    return Math.abs(loc.x - hx) < size && Math.abs(loc.y - hy) < size;
+    // スケールで割ることで、縮小表示時でも画面上のクリック範囲を維持
+    const hitSize = HIT_HANDLE_RADIUS / scale; 
+    return Math.hypot(loc.x - hx, loc.y - hy) < hitSize;
   }
 
-  // どの部分をクリックしたか判定
   function getHitAction(mx, my, layer) {
     const loc = getLocalCoords(mx, my, layer);
     const m = getTextMetrics(layer);
     const w = m.width * layer.stretchX;
     const h = m.height;
-    const pad = 10;
+    
+    // ★変更点：パディングを定数化
+    const pad = BOX_PADDING;
     const halfW = w / 2 + pad;
     const halfH = h / 2 + pad;
     const scale = layer.scale;
@@ -171,17 +164,18 @@ document.addEventListener("DOMContentLoaded", () => {
     const rOffset = ROTATE_HANDLE_OFFSET / scale;
     if (isHitHandle(loc, 0, -halfH - rOffset, scale)) return 'rotate';
 
-    // 四隅（等倍スケール）
+    // 四隅
     if (isHitHandle(loc, -halfW, -halfH, scale)) return 'tl';
     if (isHitHandle(loc, halfW, -halfH, scale)) return 'tr';
     if (isHitHandle(loc, halfW, halfH, scale)) return 'br';
     if (isHitHandle(loc, -halfW, halfH, scale)) return 'bl';
 
-    // 左右（ストレッチ）
+    // 左右
     if (isHitHandle(loc, -halfW, 0, scale)) return 'w-resize';
     if (isHitHandle(loc, halfW, 0, scale)) return 'w-resize';
 
     // 本体（ドラッグ移動）
+    // 枠内であればどこでもつかめる
     if (loc.x >= -halfW && loc.x <= halfW && loc.y >= -halfH && loc.y <= halfH) {
       return 'move';
     }
@@ -198,7 +192,6 @@ document.addEventListener("DOMContentLoaded", () => {
     const mx = e.clientX - rect.left;
     const my = e.clientY - rect.top;
 
-    // 既に選択中の場合、ハンドルのクリック判定を優先
     if (selectedIndex !== -1) {
       const layer = textLayers[selectedIndex];
       const action = getHitAction(mx, my, layer);
@@ -206,7 +199,6 @@ document.addEventListener("DOMContentLoaded", () => {
         activeHandle = action;
         isDragging = true;
         dragStart = { x: mx, y: my };
-        // ドラッグ開始時点のプロパティを保持（計算の基準にするため）
         initialProps = { 
           x: layer.x, y: layer.y, angle: layer.angle, 
           scale: layer.scale, stretchX: layer.stretchX 
@@ -215,9 +207,7 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     }
 
-    // 他のオブジェクトのクリック判定
     let foundIndex = -1;
-    // 上のレイヤーから順に判定
     for (let i = textLayers.length - 1; i >= 0; i--) {
       if (getHitAction(mx, my, textLayers[i]) === 'move') {
         foundIndex = i;
@@ -227,7 +217,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
     selectedIndex = foundIndex;
     if (selectedIndex !== -1) {
-      // 新しく選択されたオブジェクトをドラッグ開始
       activeHandle = 'move';
       isDragging = true;
       dragStart = { x: mx, y: my };
@@ -243,10 +232,9 @@ document.addEventListener("DOMContentLoaded", () => {
     const mx = e.clientX - rect.left;
     const my = e.clientY - rect.top;
 
-    // カーソル更新（ドラッグ中でない時）
     if (!isDragging && selectedIndex !== -1) {
       const action = getHitAction(mx, my, textLayers[selectedIndex]);
-      canvas.style.cursor = getCursorStyle(action, textLayers[selectedIndex].angle);
+      canvas.style.cursor = getCursorStyle(action);
     }
 
     if (!isDragging || selectedIndex === -1) return;
@@ -260,11 +248,8 @@ document.addEventListener("DOMContentLoaded", () => {
       layer.y = initialProps.y + dy;
     } 
     else if (activeHandle === 'rotate') {
-      // 中心からマウスへの角度を計算
       const angle = Math.atan2(my - layer.y, mx - layer.x);
-      // ラジアンを90度オフセット（ハンドルが上にあるため）
       let newAngle = angle + Math.PI / 2;
-      // Shiftキーが押されていれば15度刻みでスナップ（オプション）
       if (e.shiftKey) {
         const snap = Math.PI / 12;
         newAngle = Math.round(newAngle / snap) * snap;
@@ -272,38 +257,26 @@ document.addEventListener("DOMContentLoaded", () => {
       layer.angle = newAngle;
     } 
     else if (['tl', 'tr', 'bl', 'br'].includes(activeHandle)) {
-      // --- 等倍拡大縮小 ---
-      // マウスと中心の距離の変化をスケールに適用
       const currentDist = Math.hypot(mx - layer.x, my - layer.y);
       const startDist = Math.hypot(dragStart.x - layer.x, dragStart.y - layer.y);
-      // 拡大縮小率
-      const ratio = currentDist / startDist;
-      
-      // 反転動作の考慮（中心を超えた場合）は今回はシンプル化のため省略し、
-      // 距離ベースで直感的なスケーリングを行う
-      layer.scale = initialProps.scale * ratio;
+      // 距離が近すぎると計算が荒れるのでガード
+      if (startDist > 0) {
+        layer.scale = Math.max(0.1, initialProps.scale * (currentDist / startDist));
+      }
     }
     else if (activeHandle === 'w-resize') {
-       // --- 横幅ストレッチ ---
-       // ローカル座標系でのX移動量を計算
-       const cos = Math.cos(layer.angle);
-       const sin = Math.sin(layer.angle);
-       // マウスの移動量をローカルX軸に投影
-       const localDx = dx * cos + dy * sin;
-       
-       // 中心から左右に広がる挙動
-       // 初期サイズに対する比率を加算
-       const m = getTextMetrics(layer);
-       const baseWidth = m.width * initialProps.scale; // 元の描画幅
-       
-       // 右ハンドルならプラス、左ハンドルならマイナスの動きで拡大
-       // 簡易的に：マウスの現在位置のローカルX座標を使って計算
        const localMouse = getLocalCoords(mx, my, layer);
-       const initialLocalW = (getTextMetrics(layer).width * initialProps.stretchX) / 2;
+       const m = getTextMetrics(layer);
+       // 元の幅の半分
+       const baseHalfW = m.width / 2; 
        
-       // 中心からの距離に応じてストレッチ率を変更
-       const newStretch = Math.abs(localMouse.x) / (getTextMetrics(layer).width / 2);
-       layer.stretchX = Math.max(0.1, newStretch); // 最小幅制限
+       if (baseHalfW > 0) {
+           // マウス位置の絶対値 / 元の幅の半分 = 倍率
+           // パディング分(BOX_PADDING)を引いて計算することで、ハンドルの内側への追従性を高める
+           const mouseX = Math.abs(localMouse.x);
+           const newStretch = Math.max(0.1, mouseX / baseHalfW);
+           layer.stretchX = newStretch;
+       }
     }
 
     drawSticker();
@@ -318,12 +291,14 @@ document.addEventListener("DOMContentLoaded", () => {
   // ユーティリティ
   // -----------------------------------------------------------
 
-  function getCursorStyle(action, angle) {
+  function getCursorStyle(action) {
     if (!action) return "default";
     if (action === 'move') return "move";
     if (action === 'rotate') return "grab";
-    // 回転に合わせてカーソルの向きを変えるのは複雑なので簡易的に
-    return "pointer"; 
+    if (['tl', 'br'].includes(action)) return "nwse-resize";
+    if (['tr', 'bl'].includes(action)) return "nesw-resize";
+    if (action === 'w-resize') return "ew-resize";
+    return "default";
   }
 
   function syncForm(l) {
@@ -332,7 +307,6 @@ document.addEventListener("DOMContentLoaded", () => {
     fontSizeInput.value = l.fontSize; fontSelect.value = l.fontFamily;
   }
 
-  // 追加・削除・保存などのボタンイベント
   addBtn.addEventListener("click", () => {
     textLayers.push({
       text: textInput.value || "TEXT",
@@ -344,8 +318,8 @@ document.addEventListener("DOMContentLoaded", () => {
       x: canvas.width / 2,
       y: canvas.height / 2,
       angle: 0,
-      scale: 1,      // 全体の大きさ（等倍）
-      stretchX: 1    // 横方向の引き伸ばし倍率
+      scale: 1,
+      stretchX: 1
     });
     selectedIndex = textLayers.length - 1;
     drawSticker();
@@ -374,7 +348,6 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   saveBtn.addEventListener("click", () => {
-    // 選択枠を消して保存するため一時的に選択解除
     const savedIndex = selectedIndex;
     selectedIndex = -1;
     drawSticker();
@@ -382,7 +355,6 @@ document.addEventListener("DOMContentLoaded", () => {
     link.download = "sticker.png";
     link.href = canvas.toDataURL();
     link.click();
-    // 復元
     selectedIndex = savedIndex;
     drawSticker();
   });
