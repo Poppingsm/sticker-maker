@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>Sticker Maker</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <h1>Sticker Design</h1>
+  <div class="container">
+  <div class="controls">
+    <label>Team Name</label>
+    <input type="text" id="text" placeholder="TEAM NAME">
+
+    <label>text color</label>
+    <input type="color" id="textColor" value="#ffffff">
+
+    <label>background color</label>
+    <input type="color" id="bgColor" value="#1e90ff">
+
+    <label>font</label>
+    <select id="font">
+      <option value="Impact">Impact（応援向け）</option>
+      <option value="Arial Black">Arial Black</option>
+      <option value="Verdana">Verdana</option>
+      <option value="sans-serif">Sans-serif</option>
+      <option value="serif">Serif</option>
+    </select>
+
+    <label>font size</label>
+    <input type="range" id="fontSize" min="20" max="60" value="36">
+
+    <button onclick="drawSticker()">反映</button>
+  </div>
+
+  <canvas id="sticker" width="300" height="300"></canvas>
+</div>
+
+  <script src="script.js"></script>
+</body>
+</html>
