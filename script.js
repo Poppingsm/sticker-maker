@@ -56,17 +56,19 @@ document.addEventListener("DOMContentLoaded", () => {
     return { width: ctx.measureText(l.text).width, height: 60 };
   }
 
- // 描画パスのレンダリング関数
+// 描画パスのレンダリング関数
   function drawPath(context, path, color, width, style) {
     context.save(); // 設定を保存
 
     // ▼▼▼ 【修正点】消しゴムの処理 ▼▼▼
     if (style === 'eraser') {
-      // 重なった部分を「透明」にするモード
-      context.globalCompositeOperation = 'destination-out';
+      // ★修正1: destination-out（透明化）ではなく source-over（上書き）を使う
+      // 透明にすると背景色まで消えてしまい、裏側の黒などが透けてしまうため
+      context.globalCompositeOperation = 'source-over';
       
-      // ★ここが重要：万が一モードが効かなくても「白」で塗るように変更
-      context.strokeStyle = "rgba(255,255,255,1)"; 
+      // ★修正2: 常に「現在の背景色設定(bgColorInput.value)」をペンの色にする
+      // これにより、背景色を変えても自然に消えているように見えます
+      context.strokeStyle = bgColorInput.value; 
       
       context.lineWidth = width;
       context.lineCap = 'round';
@@ -110,7 +112,6 @@ document.addEventListener("DOMContentLoaded", () => {
     path.forEach(p => context.lineTo(p.x, p.y)); context.stroke();
     context.restore();
   }
-
 
   // キャンバス全体の描画
   function drawSticker() {
