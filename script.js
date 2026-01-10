@@ -90,11 +90,10 @@ document.addEventListener("DOMContentLoaded", () => {
     context.restore();
   }
 
-  // ★修正: 描画更新処理
+  // 描画更新処理
   function drawSticker() {
-    // 【重要】もし選択中のレイヤーが「消しゴム」だった場合、強制的に選択解除する
-    // これにより、どんな操作をしても消しゴムに青い枠がつくことを防ぎます
-    if (selectedIndex !== -1 && layers[selectedIndex] && layers[selectedIndex].style === 'eraser') {
+    // 【念のため】選択中のレイヤーが「手書き(draw)」だった場合、強制解除
+    if (selectedIndex !== -1 && layers[selectedIndex] && layers[selectedIndex].type === 'draw') {
         selectedIndex = -1;
     }
 
@@ -157,11 +156,11 @@ document.addEventListener("DOMContentLoaded", () => {
     }
     ctx.drawImage(drawingCanvas, 0, 0);
 
-    // 5. 選択枠（消しゴムの場合は絶対に表示しないガードを入れる）
+    // 5. 選択枠
     if (selectedIndex !== -1 && !isExporting) {
         const l = layers[selectedIndex];
-        // 万が一ここまで到達しても、eraserなら描画しない
-        if (l.style !== 'eraser') {
+        // 手書きレイヤー(draw)には絶対に枠を出さない
+        if (l.type !== 'draw') {
             ctx.save();
             ctx.translate(l.x, l.y);
             ctx.rotate(l.angle || 0);
@@ -260,8 +259,8 @@ document.addEventListener("DOMContentLoaded", () => {
     // 既存選択オブジェクトの操作
     if (selectedIndex !== -1) {
       const l = layers[selectedIndex];
-      // もし消しゴムが選択されていたら即解除
-      if (l.style === 'eraser') { selectedIndex = -1; drawSticker(); return; }
+      // ★もし手書きレイヤー(draw)が選択されていたら即解除（念のためのガード）
+      if (l.type === 'draw') { selectedIndex = -1; drawSticker(); return; }
 
       const m = getLayerMetrics(l), curW = m.width * l.scaleX, curH = m.height * l.scaleY;
       const cos = Math.cos(l.angle), sin = Math.sin(l.angle);
@@ -275,8 +274,9 @@ document.addEventListener("DOMContentLoaded", () => {
     // ★重要: オブジェクト選択の判定
     for (let i = layers.length - 1; i >= 0; i--) {
       const l = layers[i];
-      // 消しゴムレイヤーは「絶対に」選択対象から除外する
-      if (l.type === 'draw' && l.style === 'eraser') continue;
+      // ★修正: 手書きレイヤー(draw)は「絶対に」選択対象から除外する
+      // これにより、手書き線はクリックしても反応しなくなり、移動もできなくなります
+      if (l.type === 'draw') continue;
 
       const m = getLayerMetrics(l), cos = Math.cos(-l.angle), sin = Math.sin(-l.angle);
       const rx = (mx - l.x) * cos - (my - l.y) * sin, ry = (mx - l.x) * sin + (my - l.y) * cos;
