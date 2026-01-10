@@ -43,19 +43,21 @@
       </div>
 
       <div class="control-group">
-        <label class="control-header">手書きペイント</label>
-        <button id="drawModeBtn">🖊 手書きモード: OFF</button>
-        <select id="brushStyle">
+        <label class="control-header">手書き・消しゴム</label>
+        <div class="layer-grid">
+          <button id="drawModeBtn">🖊 手書き ON</button>
+          <button id="eraserBtn">🧽 消しゴム</button>
+        </div>
+        <select id="brushStyle" style="margin-top:5px;">
           <option value="pen">通常ペン</option>
           <option value="marker">マーカー</option>
-          <option value="spray">スプレー</option>
+          <option value="spray">エアブラシ</option>
         </select>
         <div class="tool-row">
           <input type="color" id="drawColor" value="#ff0000">
           <input type="range" id="drawWidth" min="1" max="40" value="5">
         </div>
       </div>
-
       <div class="control-group">
         <label class="control-header">画像・背景</label>
         <input type="file" id="imageInput" accept="image/*">
@@ -78,8 +80,15 @@
         </div>
       </div>
 
+      <div class="control-group" style="margin-top:auto;">
+        <label class="control-header">プロジェクト保存</label>
+        <div class="layer-grid">
+          <button id="saveProjectBtn" class="btn-primary">💾 保存する</button>
+          <button id="loadProjectBtn">📂 開く</button>
+        </div>
+      </div>
       <button id="deleteBtn" class="btn-danger">🗑 選択要素を削除</button>
-      <button id="saveImage" class="btn-success">💾 画像を保存 (PNG)</button>
+      <button id="saveImage" class="btn-success">🖼 画像書き出し (PNG)</button>
     </div>
   </div>
 
