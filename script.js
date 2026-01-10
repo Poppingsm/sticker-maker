@@ -2,411 +2,188 @@ document.addEventListener("DOMContentLoaded", () => {
   const canvas = document.getElementById("sticker");
   const ctx = canvas.getContext("2d");
 
-  // DOM要素（既存）
-  const textInput = document.getElementById("text");
-  const fontSelect = document.getElementById("font");
-  const textColorInput = document.getElementById("textColor");
-  const strokeColorInput = document.getElementById("strokeColor");
-  const strokeWidthInput = document.getElementById("strokeWidth");
-  const bgColorInput = document.getElementById("bgColor");
-  const fontSizeInput = document.getElementById("fontSize");
-  const addBtn = document.getElementById("addText");
-  const deleteBtn = document.getElementById("deleteText");
-  const saveBtn = document.getElementById("saveImage");
+  // DOM要素
+  const textInput = document.getElementById("text"), fontSelect = document.getElementById("fontFamily");
+  const textColorInput = document.getElementById("textColor"), strokeColorInput = document.getElementById("strokeColor");
+  const strokeWidthInput = document.getElementById("strokeWidth"), bgColorInput = document.getElementById("bgColor");
+  const addBtn = document.getElementById("addText"), deleteBtn = document.getElementById("deleteText"), saveBtn = document.getElementById("saveImage");
+  const imageInput = document.getElementById("imageInput"), opacityInput = document.getElementById("opacity");
+  const aiRemoveBgBtn = document.getElementById("aiRemoveBg"), undoBtn = document.getElementById("undoBtn");
+  const frontBtn = document.getElementById("bringToFront"), backBtn = document.getElementById("sendToBack");
 
-  // --- 追加DOM要素 ---
-  // HTMLに以下のIDを持つ要素があることを前提としています
-  const imageInput = document.getElementById("imageInput"); // <input type="file">
-  const opacityInput = document.getElementById("opacity");   // <input type="range" min="0" max="1" step="0.1">
-  const removeBgBtn = document.getElementById("removeBg");   // <button>背景透過</button>
-
-  // 状態管理
-  let layers = []; // textLayersから名称変更（画像も含むため）
+  let layers = [];
+  let history = []; // Undo用の履歴
   let selectedIndex = -1;
-  let activeHandle = null;
-  let isDragging = false;
-  let dragStart = { x: 0, y: 0 };
-  let initialProps = {}; 
+  let isDragging = false, isRotating = false, isResizing = false, isExporting = false; 
+  let resizeMode = "", offsetX = 0, offsetY = 0, startMouseAngle = 0, startLayerAngle = 0;
+  let showGuideX = false, showGuideY = false;
 
-  const VISUAL_HANDLE_SIZE = 8;
-  const HIT_HANDLE_RADIUS = 25;
-  const BOX_PADDING = 15;
-  const ROTATE_HANDLE_OFFSET = 40;
-  const COLOR_PRIMARY = "#00a8ff";
+  const HANDLE_RADIUS = 12, OFFSET = 5, SNAP_LIMIT = 10, GRID_SIZE = 25, MAX_HISTORY = 20;
 
-  // -----------------------------------------------------------
-  // 共通計算ロジック
-  // -----------------------------------------------------------
-
-  function getLayerGeometry(layer) {
-    if (layer.type === 'image') {
-      // 画像の場合のサイズ計算
-      const w = layer.img.width * layer.stretchX;
-      const h = layer.img.height * layer.stretchY;
-      return { w, h, halfW: w / 2, halfH: h / 2 };
-    } else {
-      // テキストの場合のサイズ計算
-      ctx.font = `bold ${layer.fontSize}px ${layer.fontFamily}`;
-      const metrics = ctx.measureText(layer.text);
-      const actualHeight = metrics.actualBoundingBoxAscent + metrics.actualBoundingBoxDescent;
-      const rawH = actualHeight || layer.fontSize;
-      const w = metrics.width * layer.stretchX;
-      const h = rawH * layer.stretchY;
-      return { w, h, halfW: w / 2, halfH: h / 2 };
-    }
+  // --- 履歴保存機能 ---
+  function saveHistory() {
+    // 履歴をディープコピーして保存（画像は参照のまま）
+    const state = layers.map(l => ({...l}));
+    history.push(state);
+    if (history.length > MAX_HISTORY) history.shift();
   }
 
-  // -----------------------------------------------------------
-  // 描画
-  // -----------------------------------------------------------
+  undoBtn.addEventListener("click", () => {
+    if (history.length > 0) {
+      layers = history.pop();
+      selectedIndex = -1;
+      drawSticker();
+    }
+  });
+
+  // ショートカットキー対応
+  window.addEventListener("keydown", (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key === "z") {
+      e.preventDefault();
+      undoBtn.click();
+    }
+  });
+
+  // --- 高精度AI背景除去 ---
+  const selfieSegmentation = new SelfieSegmentation({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/${file}`});
+  selfieSegmentation.setOptions({ modelSelection: 1 }); // 高精度モデル
+
+  async function removeBackgroundAI(layer) {
+    saveHistory(); // 実行前に保存
+    const tempCanvas = document.createElement("canvas");
+    const tCtx = tempCanvas.getContext("2d");
+    tempCanvas.width = layer.originalImg.width;
+    tempCanvas.height = layer.originalImg.height;
+
+    selfieSegmentation.onResults((results) => {
+      tCtx.clearRect(0, 0, tempCanvas.width, tempCanvas.height);
+      
+      // 1. マスクの描画（ぼかしを加えて精度を上げる）
+      tCtx.filter = 'blur(2px)'; // ソフトエッジ処理
+      tCtx.drawImage(results.segmentationMask, 0, 0, tempCanvas.width, tempCanvas.height);
+      
+      // 2. 合成
+      tCtx.globalCompositeOperation = 'source-in';
+      tCtx.filter = 'none';
+      tCtx.drawImage(results.image, 0, 0, tempCanvas.width, tempCanvas.height);
+      
+      const newImg = new Image();
+      newImg.onload = () => { layer.img = newImg; drawSticker(); };
+      newImg.src = tempCanvas.toDataURL();
+    });
+
+    await selfieSegmentation.send({image: layer.originalImg});
+  }
+
+  aiRemoveBgBtn.addEventListener("click", async () => {
+    if (selectedIndex === -1 || layers[selectedIndex].type !== 'image') return;
+    aiRemoveBgBtn.innerText = "高精度解析中...";
+    await removeBackgroundAI(layers[selectedIndex]);
+    aiRemoveBgBtn.innerText = "✨ 高精度AI切り抜き";
+  });
+
+  // --- 描画コア ---
+  function getLayerMetrics(layer) {
+    if (layer.type === 'image') return { width: layer.img.width, height: layer.img.height };
+    ctx.font = `bold ${layer.fontSize || 60}px ${layer.fontFamily}`;
+    const m = ctx.measureText(layer.text);
+    return { width: m.width, height: layer.fontSize * 0.8 || 48 };
+  }
+
+  function drawGrid() {
+    if (isExporting) return;
+    ctx.save(); ctx.setLineDash([2, 4]); ctx.strokeStyle = "rgba(0,0,0,0.1)"; ctx.lineWidth = 0.5;
+    for (let x = GRID_SIZE; x < canvas.width; x += GRID_SIZE) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke(); }
+    for (let y = GRID_SIZE; y < canvas.height; y += GRID_SIZE) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke(); }
+    ctx.restore();
+  }
 
   function drawSticker() {
     ctx.fillStyle = bgColorInput.value;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-
+    drawGrid();
+    if (isDragging && !isExporting) {
+      ctx.save(); ctx.setLineDash([5, 5]); ctx.strokeStyle = "rgba(255, 0, 0, 0.6)";
+      if (showGuideX) { ctx.beginPath(); ctx.moveTo(canvas.width/2, 0); ctx.lineTo(canvas.width/2, canvas.height); ctx.stroke(); }
+      if (showGuideY) { ctx.beginPath(); ctx.moveTo(0, canvas.height/2); ctx.lineTo(canvas.width, canvas.height/2); ctx.stroke(); }
+      ctx.restore();
+    }
     layers.forEach((layer, index) => {
-      ctx.save();
-      
-      // 移動・回転・全体スケール
-      ctx.translate(layer.x, layer.y);
-      ctx.rotate(layer.angle);
-      ctx.scale(layer.scale, layer.scale);
-      
-      // 透明度の適用
-      ctx.globalAlpha = layer.opacity !== undefined ? layer.opacity : 1.0;
-
-      const geo = getLayerGeometry(layer);
-
-      if (layer.type === 'image') {
-        // 画像描画
-        ctx.drawImage(layer.img, -geo.halfW, -geo.halfH, geo.w, geo.h);
-      } else {
-        // テキスト描画
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-
-        if (layer.strokeWidth > 0) {
-          ctx.strokeStyle = layer.strokeColor;
-          ctx.lineWidth = layer.strokeWidth / layer.scale;
-          ctx.lineJoin = "round";
-          ctx.save();
-          ctx.scale(layer.stretchX, layer.stretchY);
-          ctx.strokeText(layer.text, 0, 0);
-          ctx.restore();
-        }
-
-        ctx.fillStyle = layer.color;
-        ctx.save();
-        ctx.scale(layer.stretchX, layer.stretchY);
-        ctx.fillText(layer.text, 0, 0);
-        ctx.restore();
+      ctx.save(); ctx.translate(layer.x, layer.y); ctx.rotate(layer.angle || 0); ctx.globalAlpha = layer.opacity || 1.0;
+      const m = getLayerMetrics(layer), curW = m.width * layer.scaleX, curH = m.height * layer.scaleY;
+      if (layer.type === 'image') { ctx.drawImage(layer.img, -curW/2, -curH/2, curW, curH); }
+      else {
+        ctx.save(); ctx.scale(layer.scaleX, layer.scaleY); ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.font = `bold ${layer.fontSize || 60}px ${layer.fontFamily}`;
+        if (layer.strokeWidth > 0) { ctx.strokeStyle = layer.strokeColor; ctx.lineWidth = layer.strokeWidth / Math.max(layer.scaleX, layer.scaleY); ctx.lineJoin = "round"; ctx.strokeText(layer.text, 0, 0); }
+        ctx.fillStyle = layer.color; ctx.fillText(layer.text, 0, 0); ctx.restore();
       }
-
-      // 選択UI
-      if (index === selectedIndex) {
-        drawSelectionUI(geo, layer.scale);
+      if (index === selectedIndex && !isExporting) {
+        ctx.globalAlpha = 1.0; ctx.strokeStyle = "#007bff"; ctx.setLineDash([5, 5]); ctx.strokeRect(-curW/2 - OFFSET, -curH/2 - OFFSET, curW + (OFFSET*2), curH + (OFFSET*2)); ctx.setLineDash([]);
+        drawCircle(0, -curH/2 - 40, "#4CAF50"); drawCircle(curW/2 + OFFSET, 0, "white"); drawCircle(0, curH/2 + OFFSET, "white"); drawCircle(curW/2 + OFFSET, curH/2 + OFFSET, "#007bff");
       }
-
       ctx.restore();
     });
   }
 
-  function drawSelectionUI(geo, scale) {
-    const pad = BOX_PADDING;
-    const hw = geo.halfW;
-    const hh = geo.halfH;
+  function drawCircle(x, y, color) { ctx.fillStyle = color; ctx.strokeStyle = "black"; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(x, y, HANDLE_RADIUS, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); }
 
-    ctx.lineWidth = 2 / scale;
-    ctx.strokeStyle = COLOR_PRIMARY;
-    ctx.setLineDash([5, 3]);
-    ctx.strokeRect(-hw - pad, -hh - pad, (hw + pad) * 2, (hh + pad) * 2);
-    ctx.setLineDash([]);
-
-    const drawHandle = (x, y, type) => {
-      ctx.fillStyle = (type === 'rotate') ? "#fff" : COLOR_PRIMARY;
-      ctx.strokeStyle = "#fff";
-      ctx.lineWidth = 2 / scale;
-      ctx.beginPath();
-      const r = VISUAL_HANDLE_SIZE / scale;
-      ctx.arc(x, y, r, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.stroke();
-    };
-
-    drawHandle(-hw - pad, -hh - pad, 'tl');
-    drawHandle(hw + pad, -hh - pad, 'tr');
-    drawHandle(hw + pad, hh + pad, 'br');
-    drawHandle(-hw - pad, hh + pad, 'bl');
-    drawHandle(-hw - pad, 0, 'w-resize');
-    drawHandle(hw + pad, 0, 'w-resize');
-    drawHandle(0, -hh - pad, 'h-resize');
-    drawHandle(0, hh + pad, 'h-resize');
-
-    const rDist = ROTATE_HANDLE_OFFSET / scale;
-    ctx.beginPath();
-    ctx.moveTo(0, -hh - pad);
-    ctx.lineTo(0, -hh - pad - rDist);
-    ctx.strokeStyle = COLOR_PRIMARY;
-    ctx.stroke();
-    drawHandle(0, -hh - pad - rDist, 'rotate');
-  }
-
-  // -----------------------------------------------------------
-  // 当たり判定・座標計算（変更なし）
-  // -----------------------------------------------------------
-
-  function getLocalCoords(mx, my, layer) {
-    const dx = mx - layer.x;
-    const dy = my - layer.y;
-    return {
-      x: dx * Math.cos(-layer.angle) - dy * Math.sin(-layer.angle),
-      y: dx * Math.sin(-layer.angle) + dy * Math.cos(-layer.angle)
-    };
-  }
-
-  function checkHit(locX, locY, targetX, targetY, scale) {
-    const dist = Math.hypot(locX - targetX, locY - targetY);
-    const threshold = HIT_HANDLE_RADIUS / scale; 
-    return dist < threshold;
-  }
-
-  function getHitAction(mx, my, layer) {
-    const loc = getLocalCoords(mx, my, layer);
-    const geo = getLayerGeometry(layer);
-    const pad = BOX_PADDING;
-    const hw = geo.halfW + pad;
-    const hh = geo.halfH + pad;
-    const s = layer.scale;
-
-    const rDist = ROTATE_HANDLE_OFFSET / s;
-    if (checkHit(loc.x, loc.y, 0, -hh - rDist, s)) return 'rotate';
-    if (checkHit(loc.x, loc.y, -hw, -hh, s)) return 'tl';
-    if (checkHit(loc.x, loc.y, hw, -hh, s)) return 'tr';
-    if (checkHit(loc.x, loc.y, hw, hh, s)) return 'br';
-    if (checkHit(loc.x, loc.y, -hw, hh, s)) return 'bl';
-    if (checkHit(loc.x, loc.y, -hw, 0, s)) return 'w-resize';
-    if (checkHit(loc.x, loc.y, hw, 0, s)) return 'w-resize';
-    if (checkHit(loc.x, loc.y, 0, -hh, s)) return 'h-resize';
-    if (checkHit(loc.x, loc.y, 0, hh, s)) return 'h-resize';
-
-    if (loc.x >= -hw && loc.x <= hw && loc.y >= -hh && loc.y <= hh) return 'move';
-    return null;
-  }
-
-  // -----------------------------------------------------------
-  // イベントリスナー
-  // -----------------------------------------------------------
-
-  // 画像の読み込み
-  if (imageInput) {
-    imageInput.addEventListener("change", (e) => {
-      const file = e.target.files[0];
-      if (!file) return;
-
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        const img = new Image();
-        img.onload = () => {
-          layers.push({
-            type: 'image',
-            img: img,
-            originalImg: img, // 背景透過処理用
-            x: canvas.width / 2,
-            y: canvas.height / 2,
-            angle: 0,
-            scale: 0.5,
-            stretchX: 1,
-            stretchY: 1,
-            opacity: 1.0
-          });
-          selectedIndex = layers.length - 1;
-          drawSticker();
-        };
-        img.src = event.target.result;
-      };
-      reader.readAsDataURL(file);
-    });
-  }
-
-  // 背景透過（白を透明に）
-  if (removeBgBtn) {
-    removeBgBtn.addEventListener("click", () => {
-      if (selectedIndex === -1 || layers[selectedIndex].type !== 'image') return;
-      
-      const layer = layers[selectedIndex];
-      const img = layer.originalImg;
-      
-      const offCanvas = document.createElement("canvas");
-      offCanvas.width = img.width;
-      offCanvas.height = img.height;
-      const offCtx = offCanvas.getContext("2d");
-      offCtx.drawImage(img, 0, 0);
-      
-      const imageData = offCtx.getImageData(0, 0, offCanvas.width, offCanvas.height);
-      const data = imageData.data;
-      
-      for (let i = 0; i < data.length; i += 4) {
-        // RGBがすべて240以上なら白と判定してアルファを0にする
-        if (data[i] > 240 && data[i+1] > 240 && data[i+2] > 240) {
-          data[i+3] = 0;
-        }
-      }
-      
-      offCtx.putImageData(imageData, 0, 0);
-      const newImg = new Image();
-      newImg.onload = () => {
-        layer.img = newImg;
-        drawSticker();
-      };
-      newImg.src = offCanvas.toDataURL();
-    });
-  }
-
-  // 不透明度変更
-  if (opacityInput) {
-    opacityInput.addEventListener("input", () => {
-      if (selectedIndex !== -1) {
-        layers[selectedIndex].opacity = parseFloat(opacityInput.value);
-        drawSticker();
-      }
-    });
-  }
-
-  // マウスイベント（layersを参照するように変更）
-  canvas.addEventListener("mousedown", (e) => {
-    const rect = canvas.getBoundingClientRect();
-    const mx = e.clientX - rect.left;
-    const my = e.clientY - rect.top;
-
+  // --- イベント ---
+  function handleDown(mx, my) {
     if (selectedIndex !== -1) {
-      const action = getHitAction(mx, my, layers[selectedIndex]);
-      if (action) { startDrag(selectedIndex, mx, my, action); return; }
+      const s = layers[selectedIndex], m = getLayerMetrics(s), w = m.width*s.scaleX, h = m.height*s.scaleY;
+      const loc = { x: (mx-s.x)*Math.cos(-s.angle)-(my-s.y)*Math.sin(-s.angle), y: (mx-s.x)*Math.sin(-s.angle)+(my-s.y)*Math.cos(-s.angle) };
+      if (Math.hypot(loc.x, loc.y - (-h/2 - 40)) < 20) { isRotating = true; startMouseAngle = Math.atan2(mx - s.x, my - s.y); startLayerAngle = s.angle; return; }
+      if (Math.hypot(loc.x - (w/2 + OFFSET), loc.y) < 20) { isResizing = true; resizeMode = "width"; return; }
+      if (Math.hypot(loc.x, loc.y - (h/2 + OFFSET)) < 20) { isResizing = true; resizeMode = "height"; return; }
+      if (Math.hypot(loc.x - (w/2 + OFFSET), loc.y - (h/2 + OFFSET)) < 20) { isResizing = true; resizeMode = "both"; return; }
     }
-
-    let found = -1;
     for (let i = layers.length - 1; i >= 0; i--) {
-      if (getHitAction(mx, my, layers[i]) === 'move') { found = i; break; }
+      const l = layers[i], m = getLayerMetrics(l), loc = { x: (mx-l.x)*Math.cos(-l.angle)-(my-l.y)*Math.sin(-l.angle), y: (mx-l.x)*Math.sin(-l.angle)+(my-l.y)*Math.cos(-l.angle) };
+      if (Math.abs(loc.x) < (m.width*l.scaleX)/2 + OFFSET && Math.abs(loc.y) < (m.height*l.scaleY)/2 + OFFSET) {
+        saveHistory(); // ドラッグ開始前に保存
+        selectedIndex = i; isDragging = true; offsetX = mx - l.x; offsetY = my - l.y; drawSticker(); return;
+      }
     }
+    selectedIndex = -1; drawSticker();
+  }
 
-    if (found !== -1) {
-      startDrag(found, mx, my, 'move');
-      syncForm(layers[found]);
-    } else {
-      selectedIndex = -1;
-      drawSticker();
+  function handleMove(mx, my) {
+    if (selectedIndex === -1) return;
+    const s = layers[selectedIndex];
+    if (isDragging) {
+      let tx = mx - offsetX, ty = my - offsetY; showGuideX = showGuideY = false;
+      if (Math.abs(tx - canvas.width/2) < SNAP_LIMIT) { tx = canvas.width/2; showGuideX = true; }
+      if (Math.abs(ty - canvas.height/2) < SNAP_LIMIT) { ty = canvas.height/2; showGuideY = true; }
+      s.x = tx; s.y = ty;
+    } else if (isRotating) { s.angle = startLayerAngle + (Math.atan2(mx - s.x, my - s.y) - startMouseAngle);
+    } else if (isResizing) {
+      const loc = { x: (mx-s.x)*Math.cos(-s.angle)-(my-s.y)*Math.sin(-s.angle), y: (mx-s.x)*Math.sin(-s.angle)+(my-s.y)*Math.cos(-s.angle) };
+      const m = getLayerMetrics(s);
+      if (resizeMode === "width" || resizeMode === "both") s.scaleX = Math.max(0.1, (Math.abs(loc.x)*2)/m.width);
+      if (resizeMode === "height" || resizeMode === "both") s.scaleY = Math.max(0.1, (Math.abs(loc.y)*2)/m.height);
     }
-  });
-
-  function startDrag(index, mx, my, action) {
-    selectedIndex = index;
-    activeHandle = action;
-    isDragging = true;
-    dragStart = { x: mx, y: my };
-    const l = layers[index];
-    initialProps = { x: l.x, y: l.y, angle: l.angle, scale: l.scale, stretchX: l.stretchX, stretchY: l.stretchY };
-    if (opacityInput) opacityInput.value = l.opacity || 1.0;
     drawSticker();
   }
 
-  canvas.addEventListener("mousemove", (e) => {
-    const rect = canvas.getBoundingClientRect();
-    const mx = e.clientX - rect.left;
-    const my = e.clientY - rect.top;
+  canvas.addEventListener("mousedown", (e) => handleDown(e.offsetX, e.offsetY));
+  window.addEventListener("mousemove", (e) => { if(isDragging||isRotating||isResizing){ const r=canvas.getBoundingClientRect(); handleMove(e.clientX-r.left, e.clientY-r.top); } });
+  window.addEventListener("mouseup", () => { isDragging = isRotating = isResizing = false; showGuideX = showGuideY = false; drawSticker(); });
 
-    if (!isDragging) {
-      if (selectedIndex !== -1) {
-        canvas.style.cursor = getCursorStyle(getHitAction(mx, my, layers[selectedIndex]));
-      } else { canvas.style.cursor = "default"; }
-      return;
+  imageInput.addEventListener("change", (e) => { const r = new FileReader(); r.onload = (f) => { const i = new Image(); i.onload = () => { saveHistory(); layers.push({type:'image', img:i, originalImg:i, x:250, y:250, angle:0, scaleX:0.5, scaleY:0.5, opacity:1}); selectedIndex=layers.length-1; drawSticker(); }; i.src = f.target.result; }; r.readAsDataURL(e.target.files[0]); });
+  addBtn.addEventListener("click", () => { saveHistory(); layers.push({type:'text', text:textInput.value, color:textColorInput.value, strokeColor:strokeColorInput.value, strokeWidth:parseInt(strokeWidthInput.value), fontSize:60, fontFamily:fontSelect.value, x:250, y:250, angle:0, scaleX:1, scaleY:1, opacity:1}); selectedIndex = layers.length-1; drawSticker(); });
+  deleteBtn.addEventListener("click", () => { if(selectedIndex !== -1) { saveHistory(); layers.splice(selectedIndex,1); selectedIndex=-1; drawSticker(); } });
+  frontBtn.addEventListener("click", () => { if(selectedIndex !== -1) { saveHistory(); const t = layers.splice(selectedIndex, 1)[0]; layers.push(t); selectedIndex = layers.length-1; drawSticker(); } });
+  backBtn.addEventListener("click", () => { if(selectedIndex !== -1) { saveHistory(); const t = layers.splice(selectedIndex, 1)[0]; layers.unshift(t); selectedIndex = 0; drawSticker(); } });
+  saveBtn.addEventListener("click", () => { isExporting = true; const prev = selectedIndex; selectedIndex = -1; drawSticker(); const a = document.createElement("a"); a.href = canvas.toDataURL(); a.download = "sticker.png"; a.click(); isExporting = false; selectedIndex = prev; drawSticker(); });
+
+  [textInput, textColorInput, strokeColorInput, strokeWidthInput, fontSelect, opacityInput, bgColorInput].forEach(el => el.addEventListener("change", () => { 
+    saveHistory(); // 値が確定したタイミングで保存
+    if(selectedIndex!==-1 && layers[selectedIndex].type==='text'){
+      const l=layers[selectedIndex]; l.text=textInput.value; l.color=textColorInput.value; l.strokeColor=strokeColorInput.value; l.strokeWidth=parseInt(strokeWidthInput.value); l.fontFamily=fontSelect.value;
     }
-
-    const layer = layers[selectedIndex];
-    const dx = mx - dragStart.x;
-    const dy = my - dragStart.y;
-
-    switch (activeHandle) {
-      case 'move':
-        layer.x = initialProps.x + dx;
-        layer.y = initialProps.y + dy;
-        break;
-      case 'rotate':
-        layer.angle = Math.atan2(my - layer.y, mx - layer.x) + Math.PI / 2;
-        break;
-      case 'tl': case 'tr': case 'bl': case 'br':
-        const curDist = Math.hypot(mx - layer.x, my - layer.y);
-        const startDist = Math.hypot(dragStart.x - layer.x, dragStart.y - layer.y);
-        if (startDist > 0) layer.scale = Math.max(0.1, initialProps.scale * (curDist / startDist));
-        break;
-      case 'w-resize':
-        const locX = getLocalCoords(mx, my, layer).x;
-        const geoW = getLayerGeometry(layer);
-        const baseW = (layer.type === 'image') ? layer.img.width : ctx.measureText(layer.text).width;
-        if (baseW > 0) layer.stretchX = Math.max(0.1, Math.abs(locX) / (baseW / 2));
-        break;
-      case 'h-resize':
-        const locY = getLocalCoords(mx, my, layer).y;
-        const baseH = (layer.type === 'image') ? layer.img.height : (layer.fontSize || 20);
-        if (baseH > 0) layer.stretchY = Math.max(0.1, Math.abs(locY) / (baseH / 2));
-        break;
-    }
+    if(selectedIndex!==-1) layers[selectedIndex].opacity = opacityInput.value;
     drawSticker();
-  });
-
-  canvas.addEventListener("mouseup", () => { isDragging = false; activeHandle = null; });
-
-  // -----------------------------------------------------------
-  // ユーティリティ
-  // -----------------------------------------------------------
-  function getCursorStyle(action) {
-    if (!action) return "default";
-    const styles = { move: "move", rotate: "grab", "w-resize": "ew-resize", "h-resize": "ns-resize" };
-    return styles[action] || "pointer";
-  }
-
-  function syncForm(l) {
-    if (l.type !== 'image') {
-      textInput.value = l.text;
-      fontSizeInput.value = l.fontSize;
-      // ... 他のテキスト用入力同期
-    }
-  }
-
-  addBtn.addEventListener("click", () => {
-    layers.push({
-      type: 'text',
-      text: textInput.value || "TEXT",
-      color: textColorInput.value,
-      strokeColor: strokeColorInput.value,
-      strokeWidth: parseInt(strokeWidthInput.value),
-      fontSize: parseInt(fontSizeInput.value),
-      fontFamily: fontSelect.value,
-      x: canvas.width / 2, y: canvas.height / 2,
-      angle: 0, scale: 1, stretchX: 1, stretchY: 1, opacity: 1.0
-    });
-    selectedIndex = layers.length - 1;
-    drawSticker();
-  });
-
-  saveBtn.addEventListener("click", () => {
-    const saved = selectedIndex;
-    selectedIndex = -1;
-    drawSticker();
-    const link = document.createElement("a");
-    link.download = "sticker.png";
-    link.href = canvas.toDataURL();
-    link.click();
-    selectedIndex = saved;
-    drawSticker();
-  });
-
-  bgColorInput.addEventListener("input", drawSticker);
-  deleteBtn.addEventListener("click", () => {
-    if (selectedIndex !== -1) {
-      layers.splice(selectedIndex, 1);
-      selectedIndex = -1;
-      drawSticker();
-    }
-  });
+  }));
 
   addBtn.click();
 });

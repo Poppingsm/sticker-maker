@@ -2,91 +2,82 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Sticker Maker Pro - Full Control</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Sticker Maker Pro - Undo & High Quality AI</title>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation"></script>
   <style>
-    body { font-family: sans-serif; background: #f0f0f0; display: flex; flex-direction: column; align-items: center; padding-bottom: 50px; }
-    .container { display: flex; gap: 20px; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
-    .controls { display: flex; flex-direction: column; gap: 10px; width: 280px; max-height: 85vh; overflow-y: auto; padding-right: 10px; }
-    
-    /* キャンバスの背景を透明・白が見分けやすいように市松模様にする設定 */
-    canvas { 
-      border: 2px solid #ddd; 
-      background-image: 
-        linear-gradient(45deg, #eee 25%, transparent 25%, transparent 75%, #eee 75%), 
-        linear-gradient(45deg, #eee 25%, transparent 25%, transparent 75%, #eee 75%);
-      background-size: 20px 20px;
-      background-position: 0 0, 10px 10px;
-      background-color: #fff; 
-    }
-
-    label { font-size: 12px; font-weight: bold; color: #555; margin-top: 5px; }
-    .group { border: 1px solid #eee; padding: 10px; border-radius: 8px; background: #fafafa; }
-    hr { width: 100%; border: 0; border-top: 1px solid #eee; margin: 10px 0; }
-    
-    button { padding: 10px; cursor: pointer; border-radius: 5px; border: none; background: #007bff; color: white; font-weight: bold; transition: 0.2s; }
-    button:hover { background: #0056b3; }
-    
-    .img-btn { background: #6c757d; font-size: 13px; }
-    .delete-btn { background: #ff4444; }
-    .save-btn { background: #28a745; margin-top: 10px; font-size: 16px; }
-    
-    input[type="range"] { cursor: pointer; }
+    body { font-family: sans-serif; background: #f0f2f5; display: flex; flex-direction: column; align-items: center; margin: 0; padding: 20px; }
+    .container { display: flex; flex-wrap: wrap; gap: 20px; background: white; padding: 20px; border-radius: 16px; box-shadow: 0 8px 30px rgba(0,0,0,0.1); justify-content: center; width: 95%; max-width: 1000px; }
+    .controls { display: flex; flex-direction: column; gap: 12px; width: 300px; }
+    .control-group { border: 1px solid #eee; padding: 12px; border-radius: 8px; background: #fafafa; }
+    .canvas-container { position: relative; touch-action: none; }
+    canvas { border: 2px solid #ddd; border-radius: 8px; max-width: 100%; height: auto; background-color: #fff; }
+    label { font-size: 12px; font-weight: bold; color: #666; display: block; margin-bottom: 4px; }
+    input[type="text"], select { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
+    input[type="range"] { width: 100%; }
+    button { padding: 12px; cursor: pointer; border-radius: 6px; border: none; background: #007bff; color: white; font-weight: bold; }
+    .undo-btn { background: #ffa502; width: 100%; margin-bottom: 5px; }
+    .layer-btn { background: #6c5ce7; font-size: 11px; flex: 1; }
+    .img-btn { background: #6c757d; font-size: 13px; width: 100%; margin-top: 5px; }
+    .ai-btn { background: #ef5777; font-size: 13px; width: 100%; margin-top: 5px; }
+    .delete-btn { background: #ff4757; margin-top: 10px; }
+    .save-btn { background: #2ed573; margin-top: 5px; font-size: 16px; }
   </style>
 </head>
 <body>
   <h1>Sticker Design</h1>
   <div class="container">
-    <div class="controls">
-      
-      <div class="group">
-        <label>テキスト内容</label>
-        <input type="text" id="text" placeholder="文字を入力" style="width: 100%; padding: 5px; box-sizing: border-box;">
-        <button id="addText" style="width: 100%; margin-top: 5px;">＋ テキストを追加</button>
-        
-        <label>フォント / サイズ</label>
-        <select id="font" style="width: 100%; margin-bottom: 5px;">
-          <option value="Impact">Impact（太め）</option>
-          <option value="Arial Black">Arial Black</option>
-          <option value="Georgia">Georgia（明朝系）</option>
-          <option value="Comic Sans MS">Comic Sans MS</option>
-          <option value="sans-serif">標準</option>
-        </select>
-        <input type="range" id="fontSize" min="10" max="200" value="60">
-
-        <label>文字色 / 縁取り色</label>
-        <div style="display: flex; gap: 5px;">
-          <input type="color" id="textColor" value="#ffffff" style="flex: 1; height: 30px;">
-          <input type="color" id="strokeColor" value="#000000" style="flex: 1; height: 30px;">
-        </div>
-        <label>縁取りの太さ</label>
-        <input type="range" id="strokeWidth" min="0" max="20" value="5">
-      </div>
-
-      <div class="group" style="margin-top: 10px;">
-        <label>画像のインポート</label>
-        <input type="file" id="imageInput" accept="image/*" style="font-size: 11px;">
-        <button id="removeBg" class="img-btn" style="width: 100%; margin-top: 8px;">背景(白)を透明にする</button>
-      </div>
-
-      <div class="group" style="margin-top: 10px;">
-        <label>選択中要素の不透明度</label>
-        <input type="range" id="opacity" min="0" max="1" step="0.05" value="1" style="width: 100%;">
-        
-        <label>キャンバス背景色</label>
-        <input type="color" id="bgColor" value="#ffffff" style="width: 100%;">
-      </div>
-
-      <button id="deleteText" class="delete-btn">選択中の要素を削除</button>
-      <button id="saveImage" class="save-btn">ステッカーを保存 (PNG)</button>
+    <div class="canvas-container">
+      <canvas id="sticker" width="500" height="500"></canvas>
     </div>
 
-    <div style="position: relative;">
-      <canvas id="sticker" width="600" height="600"></canvas>
-      <p style="font-size: 11px; color: #888; text-align: center;">ドラッグで移動・隅で拡大・上で回転</p>
+    <div class="controls">
+      <button id="undoBtn" class="undo-btn">↩ 1つ前に戻す (Undo)</button>
+
+      <div class="control-group">
+        <label>テキスト</label>
+        <input type="text" id="text" value="HELLO">
+        <button id="addText" style="width: 100%; margin-top: 8px;">＋ テキスト追加</button>
+        <label style="margin-top:10px;">フォント</label>
+        <select id="fontFamily">
+          <option value="sans-serif">ゴシック体</option>
+          <option value="serif">明朝体</option>
+          <option value="'Arial Black', sans-serif">Arial Black</option>
+          <option value="'Impact', sans-serif">Impact</option>
+          <option value="cursive">手書き風</option>
+        </select>
+        <div style="display: flex; gap: 8px; margin-top: 10px;">
+          <div style="flex:1;"><label>文字色</label><input type="color" id="textColor" value="#ffffff" style="width:100%; height:35px;"></div>
+          <div style="flex:1;"><label>枠色</label><input type="color" id="strokeColor" value="#000000" style="width:100%; height:35px;"></div>
+        </div>
+        <label style="margin-top:10px;">枠線の太さ</label>
+        <input type="range" id="strokeWidth" min="0" max="25" value="5">
+      </div>
+
+      <div class="control-group">
+        <label>重なり順</label>
+        <div style="display: flex; gap: 5px;">
+          <button id="bringToFront" class="layer-btn">最前面</button>
+          <button id="sendToBack" class="layer-btn">最背面</button>
+        </div>
+      </div>
+
+      <div class="control-group">
+        <label>画像の追加</label>
+        <input type="file" id="imageInput" accept="image/*">
+        <button id="aiRemoveBg" class="ai-btn">✨ 高精度AI切り抜き</button>
+      </div>
+
+      <div class="control-group">
+        <label>不透明度 / 背景色</label>
+        <input type="range" id="opacity" min="0" max="1" step="0.05" value="1">
+        <input type="color" id="bgColor" value="#ffffff" style="width:100%; margin-top:5px;">
+      </div>
+
+      <button id="deleteText" class="delete-btn">削除</button>
+      <button id="saveImage" class="save-btn">画像を保存 (PNG)</button>
     </div>
   </div>
-
   <script src="script.js"></script>
 </body>
 </html>
