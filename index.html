@@ -3,64 +3,227 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Sticker Maker - Professional Edit</title>
+  <title>Sticker Maker - Professional Studio</title>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation"></script>
-  <link href="https://fonts.googleapis.com/css2?family=Kiwi+Maru&family=M+PLUS+Rounded+1c:wght@700&family=Noto+Sans+JP:wght@900&family=Sawarabi+Mincho&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=Kiwi+Maru&family=M+PLUS+Rounded+1c:wght@700&family=Noto+Sans+JP:wght@900&family=Sawarabi+Mincho&display=swap" rel="stylesheet">
+  
   <style>
-    body { font-family: sans-serif; background: #f0f2f5; display: flex; flex-direction: column; align-items: center; margin: 0; padding: 20px; }
-    .container { display: flex; flex-wrap: wrap; gap: 20px; background: white; padding: 20px; border-radius: 16px; box-shadow: 0 8px 30px rgba(0,0,0,0.1); justify-content: center; width: 95%; max-width: 1100px; }
-    .controls { display: flex; flex-direction: column; gap: 12px; width: 320px; }
-    .control-group { border: 1px solid #eee; padding: 12px; border-radius: 8px; background: #fafafa; }
-    canvas { border: 2px solid #ddd; border-radius: 8px; max-width: 100%; height: auto; background-color: #fff; }
-    label { font-size: 11px; font-weight: bold; color: #666; display: block; margin-bottom: 2px; }
-    input[type="text"], select { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
-    button { padding: 8px; cursor: pointer; border-radius: 6px; border: none; background: #007bff; color: white; font-weight: bold; font-size: 12px; }
-    .draw-btn { background: #ff9f43; width: 100%; margin-bottom: 5px; }
-    .draw-active { background: #ee5253; }
-    .undo-btn { background: #ffa502; width: 100%; margin-bottom: 5px; }
-    .layer-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin-top: 5px; }
-    .layer-btn { background: #6c5ce7; }
-    .delete-btn { background: #ff4757; margin-top: 10px; }
-    .save-btn { background: #2ed573; margin-top: 5px; font-size: 16px; height: 45px; }
-    input[type="range"] { width: 100%; }
+    :root {
+      --bg-app: #1e1e1e;       /* アプリ全体の背景 */
+      --bg-panel: #2b2b2b;     /* パネルの背景 */
+      --text-main: #ececec;    /* メイン文字色 */
+      --text-muted: #a0a0a0;   /* 薄い文字色 */
+      --accent: #3498db;       /* アクセントカラー（青） */
+      --accent-hover: #2980b9;
+      --danger: #e74c3c;       /* 削除など（赤） */
+      --success: #2ecc71;      /* 保存（緑） */
+      --border: #444444;       /* 境界線 */
+      --radius: 8px;           /* 角丸 */
+    }
+
+    body {
+      font-family: 'Inter', 'Noto Sans JP', sans-serif;
+      background: var(--bg-app);
+      color: var(--text-main);
+      margin: 0;
+      padding: 0;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden; /* スクロール防止 */
+    }
+
+    h1 {
+      font-size: 18px;
+      margin: 0;
+      padding: 10px 20px;
+      background: #111;
+      border-bottom: 1px solid #333;
+      color: var(--text-muted);
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      display: flex;
+      align-items: center;
+      height: 40px;
+    }
+
+    /* レイアウトのメインエリア */
+    .workspace {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    /* キャンバスエリア（中央） */
+    .canvas-stage {
+      flex: 1;
+      background-color: #111;
+      /* 透明を表す市松模様 */
+      background-image:
+        linear-gradient(45deg, #222 25%, transparent 25%),
+        linear-gradient(-45deg, #222 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, #222 75%),
+        linear-gradient(-45deg, transparent 75%, #222 75%);
+      background-size: 20px 20px;
+      background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
+      
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 40px;
+      overflow: auto;
+    }
+
+    canvas {
+      box-shadow: 0 0 30px rgba(0,0,0,0.5);
+      background-color: transparent; /* キャンバス自体は透明に */
+    }
+
+    /* 右側のコントロールパネル */
+    .sidebar {
+      width: 300px;
+      background: var(--bg-panel);
+      border-left: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      overflow-y: auto; /* パネル内スクロール */
+      padding: 15px;
+      gap: 15px;
+    }
+
+    /* スクロールバーのカスタマイズ */
+    ::-webkit-scrollbar { width: 8px; }
+    ::-webkit-scrollbar-track { background: #1e1e1e; }
+    ::-webkit-scrollbar-thumb { background: #555; border-radius: 4px; }
+
+    /* 各コントロールグループ */
+    .control-group {
+      background: rgba(255,255,255,0.03);
+      padding: 12px;
+      border-radius: var(--radius);
+      border: 1px solid rgba(255,255,255,0.05);
+    }
+
+    .control-header {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      margin-bottom: 10px;
+      display: block;
+    }
+
+    /* インプット要素の共通スタイル */
+    input[type="text"], select {
+      width: 100%;
+      padding: 8px;
+      background: #111;
+      border: 1px solid var(--border);
+      color: white;
+      border-radius: 4px;
+      box-sizing: border-box;
+      font-size: 13px;
+    }
+
+    input[type="text"]:focus, select:focus {
+      outline: none;
+      border-color: var(--accent);
+    }
+
+    /* カラーピッカーとスライダーの横並び */
+    .tool-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-top: 8px;
+    }
+
+    input[type="color"] {
+      -webkit-appearance: none;
+      border: none;
+      width: 30px;
+      height: 30px;
+      border-radius: 50%;
+      padding: 0;
+      background: none;
+      cursor: pointer;
+    }
+    input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
+    input[type="color"]::-webkit-color-swatch { border: 2px solid #555; border-radius: 50%; }
+
+    input[type="range"] {
+      flex: 1;
+      accent-color: var(--accent);
+      cursor: pointer;
+    }
+
+    /* ボタン共通スタイル */
+    button {
+      width: 100%;
+      padding: 10px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 600;
+      transition: all 0.2s;
+      background: #444;
+      color: white;
+      margin-bottom: 6px;
+    }
+
+    button:hover { filter: brightness(1.1); }
+    button:active { transform: translateY(1px); }
+
+    /* 特別なボタン */
+    .btn-primary { background: var(--accent); color: white; }
+    .btn-danger { background: var(--danger); color: white; margin-top: 10px; }
+    .btn-success { background: var(--success); color: white; font-size: 14px; padding: 12px; margin-top: auto; }
+    .btn-ai { background: linear-gradient(135deg, #8e44ad, #c0392b); }
+    
+    .draw-active {
+      background: var(--accent);
+      box-shadow: 0 0 10px var(--accent);
+    }
+
+    /* レイヤーボタンのグリッド */
+    .layer-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 5px;
+    }
+    .layer-grid button { margin: 0; font-size: 11px; padding: 8px; }
+
+    /* ファイル入力 */
+    input[type="file"] {
+      font-size: 11px;
+      color: #aaa;
+    }
+
+    /* レスポンシブ対応（スマホ） */
+    @media (max-width: 768px) {
+      .workspace { flex-direction: column; }
+      .sidebar { width: 100%; height: 40%; border-left: none; border-top: 1px solid var(--border); }
+      .canvas-stage { height: 60%; }
+    }
   </style>
 </head>
 <body>
-  <h1>Sticker Maker</h1>
-  <div class="container">
-    <div class="canvas-container">
+
+  <h1>Sticker Studio</h1>
+
+  <div class="workspace">
+    <div class="canvas-stage">
       <canvas id="sticker" width="500" height="500"></canvas>
     </div>
-    <div class="controls">
-      <button id="undoBtn" class="undo-btn">↩ 1つ前に戻す (Undo)</button>
+
+    <div class="sidebar">
       
-      <div class="control-group">
-        <label>重なり順（レイヤー）</label>
-        <div class="layer-btns">
-          <button class="layer-btn" onclick="moveLayer('front')">最前面へ</button>
-          <button class="layer-btn" onclick="moveLayer('back')">最背面へ</button>
-          <button class="layer-btn" onclick="moveLayer('forward')">一つ前へ</button>
-          <button class="layer-btn" onclick="moveLayer('backward')">一つ後へ</button>
-        </div>
-      </div>
+      <button id="undoBtn">↩ 元に戻す (Undo)</button>
 
       <div class="control-group">
-        <label>手書きペイント</label>
-        <button id="drawModeBtn" class="draw-btn">🖊 手書きモード: OFF</button>
-        <select id="brushStyle">
-          <option value="pen">通常ペン</option>
-          <option value="marker">マーカー</option>
-          <option value="spray">スプレー</option>
-        </select>
-        <div style="display: flex; gap: 5px; margin-top:5px;">
-          <input type="color" id="drawColor" value="#ff0000">
-          <input type="range" id="drawWidth" min="1" max="40" value="5">
-        </div>
-      </div>
-
-      <div class="control-group">
-        <label>テキスト設定</label>
-        <input type="text" id="text" value="HELLO">
+        <label class="control-header">テキスト編集</label>
+        <input type="text" id="text" value="HELLO" placeholder="ここに入力">
         <select id="fontFamily" style="margin-top:5px;">
           <option value="'Noto Sans JP', sans-serif">極太ゴシック (Noto Sans)</option>
           <option value="'M PLUS Rounded 1c', sans-serif">丸ゴシック (M PLUS)</option>
@@ -68,30 +231,56 @@
           <option value="'Sawarabi Mincho', serif">明朝体 (Sawarabi)</option>
           <option value="'Arial Black'">Arial Black (英字向け)</option>
         </select>
-        <div style="display: flex; gap: 5px; margin-top: 5px;">
-          <input type="color" id="textColor" value="#ffffff">
-          <input type="color" id="strokeColor" value="#000000">
-          <input type="range" id="strokeWidth" min="0" max="20" value="5">
+        
+        <div class="tool-row">
+          <input type="color" id="textColor" value="#ffffff" title="文字色">
+          <input type="color" id="strokeColor" value="#000000" title="縁取り色">
+          <input type="range" id="strokeWidth" min="0" max="20" value="5" title="縁取りの太さ">
         </div>
-        <button id="addText" style="width: 100%; margin-top: 8px; background:#6c757d;">＋ 新規テキスト追加</button>
+        <button id="addText" class="btn-primary" style="margin-top:8px;">＋ テキスト追加</button>
       </div>
 
       <div class="control-group">
-        <label>画像・AI</label>
+        <label class="control-header">手書きペイント</label>
+        <button id="drawModeBtn">🖊 手書きモード: OFF</button>
+        <select id="brushStyle">
+          <option value="pen">通常ペン</option>
+          <option value="marker">マーカー</option>
+          <option value="spray">スプレー</option>
+        </select>
+        <div class="tool-row">
+          <input type="color" id="drawColor" value="#ff0000">
+          <input type="range" id="drawWidth" min="1" max="40" value="5">
+        </div>
+      </div>
+
+      <div class="control-group">
+        <label class="control-header">画像・背景</label>
         <input type="file" id="imageInput" accept="image/*">
-        <button id="aiRemoveBg" class="ai-btn" style="background:#ef5777; width:100%; margin-top:5px;">✨ 高精度AI切り抜き</button>
+        <button id="aiRemoveBg" class="btn-ai" style="margin-top:8px;">✨ AI 背景削除</button>
+        
+        <div class="tool-row" style="margin-top:10px;">
+          <label style="font-size:11px; color:#aaa; width:40px;">背景色</label>
+          <input type="color" id="bgColor" value="#ffffff">
+          <input type="range" id="opacity" min="0" max="1" step="0.05" value="1" title="不透明度">
+        </div>
       </div>
 
       <div class="control-group">
-        <label>背景色 / 不透明度</label>
-        <input type="color" id="bgColor" value="#ffffff" style="width:100%; margin-bottom:8px;">
-        <input type="range" id="opacity" min="0" max="1" step="0.05" value="1">
+        <label class="control-header">レイヤー順序</label>
+        <div class="layer-grid">
+          <button onclick="moveLayer('front')">最前面</button>
+          <button onclick="moveLayer('back')">最背面</button>
+          <button onclick="moveLayer('forward')">一つ前</button>
+          <button onclick="moveLayer('backward')">一つ後</button>
+        </div>
       </div>
 
-      <button id="deleteBtn" class="delete-btn">選択中の要素を削除</button>
-      <button id="saveImage" class="save-btn">画像を保存 (PNG)</button>
+      <button id="deleteBtn" class="btn-danger">🗑 選択要素を削除</button>
+      <button id="saveImage" class="btn-success">💾 画像を保存 (PNG)</button>
     </div>
   </div>
+
   <script src="script.js"></script>
 </body>
 </html>
