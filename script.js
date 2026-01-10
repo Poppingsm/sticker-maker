@@ -55,35 +55,24 @@ document.addEventListener("DOMContentLoaded", () => {
     context.lineCap = style === 'marker' ? 'square' : 'round';
     context.lineJoin = 'round';
     
-// ▼ スプレーの書き味修正（グラフィティスタイル）
+// ▼ ス// ▼ スプレーの書き味修正（デザイン用・エアブラシ風）
     if (style === 'spray') {
       path.forEach(p => {
-        // 1. 密度を大幅に上げる（以前の3倍程度）
-        const density = width * 4; 
+        // 1. 密度を高くして、隙間を減らす（滑らかにする）
+        const density = width * 5; 
 
         for (let i = 0; i < density; i++) {
-          // 2. 分布を中心寄りにする（中心が濃くなる）
-          // 2つの乱数を平均することで、結果が中心(0.5付近)に集まりやすくなる性質を利用
-          const randomRadius = (Math.random() + Math.random()) / 2;
-          const radius = width * randomRadius * 1.3; // 少し広範囲に散らす(1.3倍)
+          // 2. 円形に散らす（Math.random() をそのまま使うことで、自然と中心が濃く、外が薄くなる）
+          const radius = width * Math.random(); 
           const angle = Math.random() * Math.PI * 2;
 
           const x = p.x + Math.cos(angle) * radius;
           const y = p.y + Math.sin(angle) * radius;
 
-          // 3. 粒の大きさをランダムに変える（スパッタリング効果）
-          // 基本は小さな粒だが、たまにブラシサイズに応じた大きな粒が混ざる
-          let dotSize = Math.random() * 1.5 + 0.5; // 基本サイズ (0.5〜2.0px)
-          
-          // 10%の確率で、ブラシの太さに応じた「飛び散り（スパッタ）」を追加
-          if (Math.random() < 0.1) {
-             dotSize = Math.random() * (width / 4) + 2;
-          }
-
           context.fillStyle = color;
-          // 四角いドットで描画することで、少しザラッとした質感出す
-          // 少し位置をずらしてランダム感を強調
-          context.fillRect(x + (Math.random()-0.5), y + (Math.random()-0.5), dotSize, dotSize);
+          // 3. 粒のサイズを「1px」に固定し、大きなダマをなくす
+          // これにより「きめ細かい霧」のような質感になります
+          context.fillRect(x, y, 1, 1);
         }
       });
       return;
