@@ -1,44 +1,124 @@
-body {
-  font-family: Arial, sans-serif;
-  background: #f0f0f0;
-  text-align: center;
+/* Google Fontsからモダンなフォントを読み込み */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap');
+
+:root {
+  /* アーティスト向けの配色パレット */
+  --bg-color: #121212;         /* 深い黒背景で集中力を高める */
+  --panel-bg: rgba(30, 30, 30, 0.7); /* 半透明のパネル */
+  --text-main: #e0e0e0;        /* 読みやすい白に近いグレー */
+  --text-sub: #a0a0a0;         /* 控えめなラベル色 */
+  --accent: #6c5ce7;           /* クリエイティビティを刺激する紫 */
+  --accent-hover: #8e7bf5;
+  --input-bg: #2a2a2a;
+  --border-radius: 12px;
 }
 
+body {
+  font-family: 'Inter', sans-serif;
+  background: var(--bg-color);
+  color: var(--text-main);
+  text-align: center;
+  margin: 0;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center; /* 画面中央に配置 */
+}
+
+/* レイアウト調整 */
 .container {
   display: flex;
   justify-content: center;
-  gap: 30px;
-  margin-top: 20px;
+  align-items: flex-start; /* 上揃えで整頓 */
+  gap: 40px;
+  padding: 40px;
+  flex-wrap: wrap; /* 画面が狭いときは折り返す */
 }
 
+/* 操作パネル（グラスモーフィズム風） */
 .controls {
-  background: #f0f0f0;
-  padding: 20px;
-  width: 220px;
-  border-radius: 12px;
-  box-shadow: 0 0 10px rgba(0,0,0,0.1);
+  background: var(--panel-bg);
+  backdrop-filter: blur(12px); /* すりガラス効果 */
+  -webkit-backdrop-filter: blur(12px);
+  padding: 24px;
+  width: 240px;
+  border-radius: var(--border-radius);
+  border: 1px solid rgba(255, 255, 255, 0.08); /* 繊細な境界線 */
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  text-align: left; /* 文字は左揃えで見やすく */
 }
 
+/* ラベルデザイン */
 label {
   display: block;
-  margin-top: 10px;
-  font-size: 14px;
+  margin-top: 16px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-sub);
+  letter-spacing: 0.5px;
+  text-transform: uppercase; /* 大文字でスタイリッシュに */
 }
 
+label:first-of-type {
+  margin-top: 0;
+}
+
+/* 入力フォームのデザイン */
 input, select {
   width: 100%;
-  margin-top: 4px;
+  margin-top: 8px;
+  padding: 10px;
+  background: var(--input-bg);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  color: white;
+  font-size: 14px;
+  box-sizing: border-box; /* パディングを含めた幅計算 */
+  transition: all 0.2s ease;
 }
 
+input:focus, select:focus {
+  outline: none;
+  border-color: var(--accent);
+  background: #333;
+}
+
+/* キャンバス（主役） */
 canvas {
-  border: 3px solid #222;
-  border-radius: 15px;
-  background: white;
+  background: #ffffff;
+  border: none; /* 枠線を消して解放感を出す */
+  border-radius: 8px; /* 角を少しだけ丸く */
+  /* 浮かんでいるような影をつけて重要性を強調 */
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+  transition: transform 0.3s ease;
 }
 
+/* キャンバスにマウスが乗った時の演出 */
+canvas:hover {
+  transform: scale(1.01); /* わずかに拡大して対話感を出す */
+}
+
+/* ボタンのデザイン */
 button {
-  padding: 8px;
-  cursor: pointer;
+  width: 100%;
+  margin-top: 24px;
+  padding: 12px;
+  background: var(--accent);
+  color: white;
+  font-weight: 600;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--border-radius);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 15px rgba(108, 92, 231, 0.4); /* ボタン自体を発光させる */
+}
+
+button:hover {
+  background: var(--accent-hover);
+  transform: translateY(-2px); /* 押せる感覚 */
+  box-shadow: 0 6px 20px rgba(108, 92, 231, 0.6);
+}
+
+button:active {
+  transform: translateY(0);
 }
