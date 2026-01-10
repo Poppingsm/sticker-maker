@@ -1,124 +1,198 @@
-/* Google Fontsからモダンなフォントを読み込み */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap');
-
 :root {
-  /* アーティスト向けの配色パレット */
-  --bg-color: #121212;         /* 深い黒背景で集中力を高める */
-  --panel-bg: rgba(30, 30, 30, 0.7); /* 半透明のパネル */
-  --text-main: #e0e0e0;        /* 読みやすい白に近いグレー */
-  --text-sub: #a0a0a0;         /* 控えめなラベル色 */
-  --accent: #6c5ce7;           /* クリエイティビティを刺激する紫 */
-  --accent-hover: #8e7bf5;
-  --input-bg: #2a2a2a;
-  --border-radius: 12px;
+  --bg-app: #1e1e1e;       /* アプリ全体の背景 */
+  --bg-panel: #2b2b2b;     /* パネルの背景 */
+  --text-main: #ececec;    /* メイン文字色 */
+  --text-muted: #a0a0a0;   /* 薄い文字色 */
+  --accent: #3498db;       /* アクセントカラー（青） */
+  --accent-hover: #2980b9;
+  --danger: #e74c3c;       /* 削除など（赤） */
+  --success: #2ecc71;      /* 保存（緑） */
+  --border: #444444;       /* 境界線 */
+  --radius: 8px;           /* 角丸 */
 }
 
 body {
-  font-family: 'Inter', sans-serif;
-  background: var(--bg-color);
+  font-family: 'Inter', 'Noto Sans JP', sans-serif;
+  background: var(--bg-app);
   color: var(--text-main);
-  text-align: center;
   margin: 0;
-  min-height: 100vh;
+  padding: 0;
+  height: 100vh;
   display: flex;
   flex-direction: column;
-  justify-content: center; /* 画面中央に配置 */
+  overflow: hidden; /* スクロール防止 */
 }
 
-/* レイアウト調整 */
-.container {
+h1 {
+  font-size: 18px;
+  margin: 0;
+  padding: 10px 20px;
+  background: #111;
+  border-bottom: 1px solid #333;
+  color: var(--text-muted);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  display: flex;
+  align-items: center;
+  height: 40px;
+}
+
+/* レイアウトのメインエリア */
+.workspace {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* キャンバスエリア（中央） */
+.canvas-stage {
+  flex: 1;
+  background-color: #111;
+  /* 透明を表す市松模様 */
+  background-image:
+    linear-gradient(45deg, #222 25%, transparent 25%),
+    linear-gradient(-45deg, #222 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #222 75%),
+    linear-gradient(-45deg, transparent 75%, #222 75%);
+  background-size: 20px 20px;
+  background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
+  
   display: flex;
   justify-content: center;
-  align-items: flex-start; /* 上揃えで整頓 */
-  gap: 40px;
+  align-items: center;
   padding: 40px;
-  flex-wrap: wrap; /* 画面が狭いときは折り返す */
+  overflow: auto;
 }
 
-/* 操作パネル（グラスモーフィズム風） */
-.controls {
-  background: var(--panel-bg);
-  backdrop-filter: blur(12px); /* すりガラス効果 */
-  -webkit-backdrop-filter: blur(12px);
-  padding: 24px;
-  width: 240px;
-  border-radius: var(--border-radius);
-  border: 1px solid rgba(255, 255, 255, 0.08); /* 繊細な境界線 */
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-  text-align: left; /* 文字は左揃えで見やすく */
+canvas {
+  box-shadow: 0 0 30px rgba(0,0,0,0.5);
+  background-color: transparent; /* キャンバス自体は透明に */
 }
 
-/* ラベルデザイン */
-label {
+/* 右側のコントロールパネル */
+.sidebar {
+  width: 300px;
+  background: var(--bg-panel);
+  border-left: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto; /* パネル内スクロール */
+  padding: 15px;
+  gap: 15px;
+}
+
+/* スクロールバーのカスタマイズ */
+::-webkit-scrollbar { width: 8px; }
+::-webkit-scrollbar-track { background: #1e1e1e; }
+::-webkit-scrollbar-thumb { background: #555; border-radius: 4px; }
+
+/* 各コントロールグループ */
+.control-group {
+  background: rgba(255,255,255,0.03);
+  padding: 12px;
+  border-radius: var(--radius);
+  border: 1px solid rgba(255,255,255,0.05);
+}
+
+.control-header {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  margin-bottom: 10px;
   display: block;
-  margin-top: 16px;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-sub);
-  letter-spacing: 0.5px;
-  text-transform: uppercase; /* 大文字でスタイリッシュに */
 }
 
-label:first-of-type {
-  margin-top: 0;
-}
-
-/* 入力フォームのデザイン */
-input, select {
+/* インプット要素の共通スタイル */
+input[type="text"], select {
   width: 100%;
-  margin-top: 8px;
-  padding: 10px;
-  background: var(--input-bg);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 6px;
+  padding: 8px;
+  background: #111;
+  border: 1px solid var(--border);
   color: white;
-  font-size: 14px;
-  box-sizing: border-box; /* パディングを含めた幅計算 */
-  transition: all 0.2s ease;
+  border-radius: 4px;
+  box-sizing: border-box;
+  font-size: 13px;
 }
 
-input:focus, select:focus {
+input[type="text"]:focus, select:focus {
   outline: none;
   border-color: var(--accent);
-  background: #333;
 }
 
-/* キャンバス（主役） */
-canvas {
-  background: #ffffff;
-  border: none; /* 枠線を消して解放感を出す */
-  border-radius: 8px; /* 角を少しだけ丸く */
-  /* 浮かんでいるような影をつけて重要性を強調 */
-  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
-  transition: transform 0.3s ease;
+/* カラーピッカーとスライダーの横並び */
+.tool-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
 }
 
-/* キャンバスにマウスが乗った時の演出 */
-canvas:hover {
-  transform: scale(1.01); /* わずかに拡大して対話感を出す */
+input[type="color"] {
+  -webkit-appearance: none;
+  border: none;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  padding: 0;
+  background: none;
+  cursor: pointer;
+}
+input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
+input[type="color"]::-webkit-color-swatch { border: 2px solid #555; border-radius: 50%; }
+
+input[type="range"] {
+  flex: 1;
+  accent-color: var(--accent);
+  cursor: pointer;
 }
 
-/* ボタンのデザイン */
+/* ボタン共通スタイル */
 button {
   width: 100%;
-  margin-top: 24px;
-  padding: 12px;
-  background: var(--accent);
-  color: white;
-  font-weight: 600;
+  padding: 10px;
   border: none;
-  border-radius: var(--border-radius);
+  border-radius: 4px;
   cursor: pointer;
-  transition: all 0.2s ease;
-  box-shadow: 0 4px 15px rgba(108, 92, 231, 0.4); /* ボタン自体を発光させる */
+  font-size: 12px;
+  font-weight: 600;
+  transition: all 0.2s;
+  background: #444;
+  color: white;
+  margin-bottom: 6px;
 }
 
-button:hover {
-  background: var(--accent-hover);
-  transform: translateY(-2px); /* 押せる感覚 */
-  box-shadow: 0 6px 20px rgba(108, 92, 231, 0.6);
+button:hover { filter: brightness(1.1); }
+button:active { transform: translateY(1px); }
+
+/* 特別なボタン */
+.btn-primary { background: var(--accent); color: white; }
+.btn-danger { background: var(--danger); color: white; margin-top: 10px; }
+.btn-success { background: var(--success); color: white; font-size: 14px; padding: 12px; margin-top: auto; }
+.btn-ai { background: linear-gradient(135deg, #8e44ad, #c0392b); }
+
+.draw-active {
+  background: var(--accent);
+  box-shadow: 0 0 10px var(--accent);
 }
 
-button:active {
-  transform: translateY(0);
+/* レイヤーボタンのグリッド */
+.layer-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 5px;
+}
+.layer-grid button { margin: 0; font-size: 11px; padding: 8px; }
+
+/* ファイル入力 */
+input[type="file"] {
+  font-size: 11px;
+  color: #aaa;
+}
+
+/* レスポンシブ対応（スマホ） */
+@media (max-width: 768px) {
+  .workspace { flex-direction: column; }
+  .sidebar { width: 100%; height: 40%; border-left: none; border-top: 1px solid var(--border); }
+  .canvas-stage { height: 60%; }
 }
