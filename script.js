@@ -156,11 +156,10 @@ document.addEventListener("DOMContentLoaded", () => {
     }
     ctx.drawImage(drawingCanvas, 0, 0);
 
-    // 5. 選択枠
+    // 5. 選択枠（手書き以外）
     if (selectedIndex !== -1 && !isExporting) {
         const l = layers[selectedIndex];
-        // 手書きレイヤー(draw)には絶対に枠を出さない
-        if (l.type !== 'draw') {
+        if (l && l.type !== 'draw') {
             ctx.save();
             ctx.translate(l.x, l.y);
             ctx.rotate(l.angle || 0);
@@ -252,30 +251,37 @@ document.addEventListener("DOMContentLoaded", () => {
     if (e.cancelable) e.preventDefault(); 
     const {x: mx, y: my} = getPos(e);
 
+    // 手書き・消しゴムモード
     if (isDrawingMode || isEraserMode) { 
       saveHistory(); isDrawing = true; currentPath = [{x: mx, y: my}]; selectedIndex = -1; drawSticker(); return; 
+    }
+
+    // ★重要ガード: もし何らかの理由で手書きレイヤーが選択されていたら即解除して次へ
+    if (selectedIndex !== -1 && layers[selectedIndex] && layers[selectedIndex].type === 'draw') {
+      selectedIndex = -1;
+      drawSticker();
     }
 
     // 既存選択オブジェクトの操作
     if (selectedIndex !== -1) {
       const l = layers[selectedIndex];
-      // ★もし手書きレイヤー(draw)が選択されていたら即解除（念のためのガード）
-      if (l.type === 'draw') { selectedIndex = -1; drawSticker(); return; }
-
-      const m = getLayerMetrics(l), curW = m.width * l.scaleX, curH = m.height * l.scaleY;
-      const cos = Math.cos(l.angle), sin = Math.sin(l.angle);
-      const rx = (mx - l.x) * cos + (my - l.y) * sin, ry = -(mx - l.x) * sin + (my - l.y) * cos;
-      if (Math.hypot(rx - 0, ry - (-curH/2-30)) < 20) { isRotating = true; startMouseAngle = Math.atan2(mx - l.x, my - l.y); startLayerAngle = l.angle; saveHistory(); return; }
-      if (Math.hypot(rx - (curW/2+10), ry - 0) < 25) { isResizing = true; resizeMode = "w"; saveHistory(); return; }
-      if (Math.hypot(rx - 0, ry - (curH/2+10)) < 25) { isResizing = true; resizeMode = "h"; saveHistory(); return; }
-      if (Math.hypot(rx - (curW/2+10), ry - (curH/2+10)) < 25) { isResizing = true; resizeMode = "both"; saveHistory(); return; }
+      // ここでも念のため手書きチェック（通常ここまで来ない）
+      if (l.type !== 'draw') {
+        const m = getLayerMetrics(l), curW = m.width * l.scaleX, curH = m.height * l.scaleY;
+        const cos = Math.cos(l.angle), sin = Math.sin(l.angle);
+        const rx = (mx - l.x) * cos + (my - l.y) * sin, ry = -(mx - l.x) * sin + (my - l.y) * cos;
+        if (Math.hypot(rx - 0, ry - (-curH/2-30)) < 20) { isRotating = true; startMouseAngle = Math.atan2(mx - l.x, my - l.y); startLayerAngle = l.angle; saveHistory(); return; }
+        if (Math.hypot(rx - (curW/2+10), ry - 0) < 25) { isResizing = true; resizeMode = "w"; saveHistory(); return; }
+        if (Math.hypot(rx - 0, ry - (curH/2+10)) < 25) { isResizing = true; resizeMode = "h"; saveHistory(); return; }
+        if (Math.hypot(rx - (curW/2+10), ry - (curH/2+10)) < 25) { isResizing = true; resizeMode = "both"; saveHistory(); return; }
+      }
     }
 
     // ★重要: オブジェクト選択の判定
     for (let i = layers.length - 1; i >= 0; i--) {
       const l = layers[i];
-      // ★修正: 手書きレイヤー(draw)は「絶対に」選択対象から除外する
-      // これにより、手書き線はクリックしても反応しなくなり、移動もできなくなります
+      // ★修正: 手書きレイヤー(draw)は判定ループから除外（continue）
+      // これにより「クリックしても存在しないもの」として扱われる
       if (l.type === 'draw') continue;
 
       const m = getLayerMetrics(l), cos = Math.cos(-l.angle), sin = Math.sin(-l.angle);
@@ -307,6 +313,9 @@ document.addEventListener("DOMContentLoaded", () => {
       if (resizeMode === "h" || resizeMode === "both") l.scaleY = Math.max(0.1, (ry * 2) / m.height);
       drawSticker();
     } else if (isDragging && selectedIndex !== -1) {
+      // ★念のためのガード: 手書きなら移動させない
+      if (layers[selectedIndex].type === 'draw') { isDragging = false; return; }
+      
       let tx = mx - offsetX, ty = my - offsetY;
       showGuideX = Math.abs(tx - 250) < SNAP_LIMIT; showGuideY = Math.abs(ty - 250) < SNAP_LIMIT;
       layers[selectedIndex].x = showGuideX ? 250 : tx; layers[selectedIndex].y = showGuideY ? 250 : ty;
