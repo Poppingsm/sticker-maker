@@ -26,10 +26,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // 履歴保存
   function saveHistory() {
-    const state = layers.map(l => {
-      // 画像データは参照渡しにならないよう注意が必要だが、簡易実装としてオブジェクトコピー
-      return {...l, path: l.path ? l.path.map(p => ({...p})) : null};
-    });
+    const state = layers.map(l => ({...l, path: l.path ? l.path.map(p => ({...p})) : null}));
     history.push(state);
     if (history.length > MAX_HISTORY) history.shift();
   }
@@ -53,7 +50,6 @@ document.addEventListener("DOMContentLoaded", () => {
     if (l.type === 'draw') {
       const xs = l.path.map(p => p.x), ys = l.path.map(p => p.y);
       const minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys), maxY = Math.max(...ys);
-      // 消しゴムの場合は選択枠を出さないようにサイズ0を返す手もあるが、削除用に枠は残す
       return { width: maxX - minX + 40, height: maxY - minY + 40, ox: minX + (maxX-minX)/2, oy: minY + (maxY-minY)/2 };
     }
     ctx.font = `bold 60px ${l.fontFamily}`;
@@ -62,23 +58,31 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // 描画パスのレンダリング
   function drawPath(context, path, color, width, style) {
+    context.save(); // 設定を保存
+
+    // ▼ ここを修正：消しゴムなら「透明にするモード」に切り替え
     if (style === 'eraser') {
-      // 消しゴム：ここで色を指定しても意味はないが、globalCompositeOperationで処理される
-      context.strokeStyle = "#000"; 
+      context.globalCompositeOperation = 'destination-out'; // 重なった部分を消す
+      context.strokeStyle = "rgba(0,0,0,1)"; // 色は何でも良い（消えるので）
       context.lineWidth = width;
       context.lineCap = 'round';
       context.lineJoin = 'round';
-      context.beginPath(); context.moveTo(path[0].x, path[0].y);
-      path.forEach(p => context.lineTo(p.x, p.y)); context.stroke();
+      context.beginPath(); 
+      context.moveTo(path[0].x, path[0].y);
+      path.forEach(p => context.lineTo(p.x, p.y)); 
+      context.stroke();
+      context.restore(); // 設定を戻す
       return;
     }
 
+    // 通常のペンの処理
+    context.globalCompositeOperation = 'source-over'; // 上書きモード
     context.strokeStyle = color;
     context.lineWidth = width;
     context.lineCap = style === 'marker' ? 'square' : 'round';
     context.lineJoin = 'round';
     
-    // エアブラシ風スプレー
+    // エアブラシ
     if (style === 'spray') {
       path.forEach(p => {
         const density = width * 5; 
@@ -91,21 +95,23 @@ document.addEventListener("DOMContentLoaded", () => {
           context.fillRect(x, y, 1, 1);
         }
       });
+      context.restore();
       return;
     }
 
     context.beginPath(); context.moveTo(path[0].x, path[0].y);
     path.forEach(p => context.lineTo(p.x, p.y)); context.stroke();
+    context.restore();
   }
 
   // キャンバス全体の描画
   function drawSticker() {
-    // 1. 背景色を描画
+    // 1. 背景色
     ctx.globalCompositeOperation = 'source-over';
     ctx.fillStyle = bgColorInput.value;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     
-    // 2. グリッド線（保存時は消す）
+    // 2. グリッド
     if (!isExporting) {
       ctx.save(); ctx.setLineDash([2, 4]); ctx.strokeStyle = "rgba(0,0,0,0.1)";
       for (let i = GRID_SIZE; i < 500; i += GRID_SIZE) { 
@@ -120,15 +126,14 @@ document.addEventListener("DOMContentLoaded", () => {
       ctx.restore();
     }
 
-    // 3. レイヤーの描画
+    // 3. レイヤー
     layers.forEach((l, idx) => {
       ctx.save();
       
-      // ▼ 消しゴム処理のキモ：合成モードを変更する
+      // レイヤー単位での消しゴム処理
       if (l.type === 'draw' && l.style === 'eraser') {
-        ctx.globalCompositeOperation = 'destination-out';
-      } else {
-        ctx.globalCompositeOperation = 'source-over';
+         // ここでは特に指定せず drawPath 内の globalCompositeOperation に任せる手もあるが
+         // 念のため drawPath 呼び出し側では触らず、drawPath関数内で処理させる
       }
 
       ctx.translate(l.x, l.y);
@@ -150,12 +155,12 @@ document.addEventListener("DOMContentLoaded", () => {
         ctx.restore();
       }
 
-      ctx.restore(); // 描画設定をリセット（合成モードも戻る）
+      ctx.restore();
 
-      // 4. 選択枠の描画（source-overで描く必要がある）
+      // 4. 選択枠
       if (idx === selectedIndex && !isExporting) {
         ctx.save();
-        ctx.globalCompositeOperation = 'source-over'; // 枠線は必ず通常描画
+        ctx.globalCompositeOperation = 'source-over'; 
         ctx.translate(l.x, l.y);
         ctx.rotate(l.angle || 0);
         
@@ -173,7 +178,6 @@ document.addEventListener("DOMContentLoaded", () => {
         ctx.restore();
       }
     });
-    // 最後に合成モードを安全のため戻す
     ctx.globalCompositeOperation = 'source-over';
   }
 
@@ -192,84 +196,47 @@ document.addEventListener("DOMContentLoaded", () => {
 
   [textInput, fontSelect, textColorInput, strokeColorInput, strokeWidthInput, opacityInput, bgColorInput].forEach(el => el.addEventListener("input", applyChange));
 
-  // ▼▼▼ 保存・読み込み機能 ▼▼▼
+  // 保存・読み込み
   saveProjectBtn.addEventListener("click", () => {
     const name = prompt("デザインの名前を入力してください", "MySticker");
     if(!name) return;
-
-    // 画像オブジェクトは保存できないため、Base64文字列に変換して保存用の配列を作る
     const layersToSave = layers.map(l => {
       let layerData = {...l};
-      if(l.type === 'image') {
-        layerData.img = l.img.src; // DataURLとして保存
-        layerData.originalImg = l.originalImg.src;
-      }
+      if(l.type === 'image') { layerData.img = l.img.src; layerData.originalImg = l.originalImg.src; }
       return layerData;
     });
-
-    const saveData = {
-      date: new Date().toLocaleString(),
-      layers: layersToSave,
-      bgColor: bgColorInput.value
-    };
-
+    const saveData = { date: new Date().toLocaleString(), layers: layersToSave, bgColor: bgColorInput.value };
     localStorage.setItem("sticker_project_" + name, JSON.stringify(saveData));
     alert(`「${name}」を保存しました！`);
   });
 
   loadProjectBtn.addEventListener("click", () => {
-    // 保存されたキーを探す
     const keys = Object.keys(localStorage).filter(k => k.startsWith("sticker_project_"));
     if(keys.length === 0) { alert("保存されたデザインはありません"); return; }
-
     const names = keys.map(k => k.replace("sticker_project_", ""));
     const name = prompt("読み込むデザイン名を入力:\n" + names.join(", "));
     if(!name) return;
-
     const dataStr = localStorage.getItem("sticker_project_" + name);
     if(!dataStr) { alert("見つかりませんでした"); return; }
-
     const data = JSON.parse(dataStr);
     
-    // 読み込み処理（画像を復元する必要があるため非同期処理的に行う）
     bgColorInput.value = data.bgColor || "#ffffff";
     layers = [];
-    
     let loadedCount = 0;
     const totalImages = data.layers.filter(l => l.type === 'image').length;
-
-    // 読み込み完了後の描画関数
-    const finishLoad = () => {
-      saveHistory(); // 履歴リセット代わり
-      selectedIndex = -1;
-      drawSticker();
-    };
+    const finishLoad = () => { saveHistory(); selectedIndex = -1; drawSticker(); };
 
     data.layers.forEach(l => {
       if(l.type === 'image') {
-        const img = new Image();
-        const origImg = new Image();
-        img.src = l.img;
-        origImg.src = l.originalImg;
-        
-        // 画像読み込み待ち
-        img.onload = () => {
-          l.img = img;
-          l.originalImg = origImg;
-          layers.push(l);
-          loadedCount++;
-          if(loadedCount >= totalImages) finishLoad();
-        };
-      } else {
-        layers.push(l);
-      }
+        const img = new Image(); const origImg = new Image();
+        img.src = l.img; origImg.src = l.originalImg;
+        img.onload = () => { l.img = img; l.originalImg = origImg; layers.push(l); loadedCount++; if(loadedCount >= totalImages) finishLoad(); };
+      } else { layers.push(l); }
     });
-
     if(totalImages === 0) finishLoad();
   });
 
-
-  // ▼▼▼ スマホ対応イベント処理 ▼▼▼
+  // イベント処理
   const getPos = (e) => {
     const r = canvas.getBoundingClientRect();
     const scaleX = canvas.width / r.width;
@@ -284,25 +251,15 @@ document.addEventListener("DOMContentLoaded", () => {
     if (e.cancelable) e.preventDefault(); 
     const {x: mx, y: my} = getPos(e);
 
-    // 手書きまたは消しゴムモード
     if (isDrawingMode || isEraserMode) { 
-      saveHistory(); 
-      isDrawing = true; 
-      currentPath = [{x: mx, y: my}]; 
-      // 選択を解除
-      selectedIndex = -1;
-      drawSticker();
-      return; 
+      saveHistory(); isDrawing = true; currentPath = [{x: mx, y: my}]; selectedIndex = -1; drawSticker(); return; 
     }
 
     if (selectedIndex !== -1) {
       const l = layers[selectedIndex], m = getLayerMetrics(l), curW = m.width * l.scaleX, curH = m.height * l.scaleY;
       const cos = Math.cos(l.angle), sin = Math.sin(l.angle);
       const rx = (mx - l.x) * cos + (my - l.y) * sin, ry = -(mx - l.x) * sin + (my - l.y) * cos;
-      
-      if (Math.hypot(rx - 0, ry - (-curH/2-30)) < 20) { 
-        isRotating = true; startMouseAngle = Math.atan2(mx - l.x, my - l.y); startLayerAngle = l.angle; saveHistory(); return; 
-      }
+      if (Math.hypot(rx - 0, ry - (-curH/2-30)) < 20) { isRotating = true; startMouseAngle = Math.atan2(mx - l.x, my - l.y); startLayerAngle = l.angle; saveHistory(); return; }
       if (Math.hypot(rx - (curW/2+10), ry - 0) < 25) { isResizing = true; resizeMode = "w"; saveHistory(); return; }
       if (Math.hypot(rx - 0, ry - (curH/2+10)) < 25) { isResizing = true; resizeMode = "h"; saveHistory(); return; }
       if (Math.hypot(rx - (curW/2+10), ry - (curH/2+10)) < 25) { isResizing = true; resizeMode = "both"; saveHistory(); return; }
@@ -324,12 +281,12 @@ document.addEventListener("DOMContentLoaded", () => {
   const handleMove = (e) => {
     if (e.cancelable) e.preventDefault();
     if (!isDragging && !isResizing && !isRotating && !isDrawing) return;
-
     const {x: mx, y: my} = getPos(e);
 
     if ((isDrawingMode || isEraserMode) && isDrawing) {
-      currentPath.push({x: mx, y: my}); drawSticker();
-      // 現在描画中のプレビュー（消しゴムなら黒線で仮表示、確定後に透明になる）
+      currentPath.push({x: mx, y: my}); 
+      drawSticker(); // まず既存の絵を描画
+      // 次に現在の線を「重ねて」描画（消しゴムならここで消える）
       const style = isEraserMode ? 'eraser' : brushStyleSelect.value;
       drawPath(ctx, currentPath, drawColorInput.value, drawWidthInput.value, style);
     } else if (isRotating) {
@@ -351,17 +308,8 @@ document.addEventListener("DOMContentLoaded", () => {
   const handleEnd = () => {
     if (isDrawing) {
       const m = getLayerMetrics({type:'draw', path: currentPath, scaleX:1, scaleY:1});
-      // 消しゴムモードならスタイルを eraser にする
       const style = isEraserMode ? 'eraser' : brushStyleSelect.value;
-      
-      layers.push({
-        type:'draw', 
-        path:[...currentPath], 
-        color:drawColorInput.value, 
-        width:parseInt(drawWidthInput.value), 
-        style: style, 
-        x:m.ox, y:m.oy, scaleX:1, scaleY:1, angle:0, opacity:1
-      });
+      layers.push({type:'draw', path:[...currentPath], color:drawColorInput.value, width:parseInt(drawWidthInput.value), style: style, x:m.ox, y:m.oy, scaleX:1, scaleY:1, angle:0, opacity:1});
       isDrawing = false;
     }
     isDragging = isResizing = isRotating = false; showGuideX = showGuideY = false; drawSticker();
@@ -374,30 +322,22 @@ document.addEventListener("DOMContentLoaded", () => {
   window.addEventListener("touchmove", handleMove, { passive: false });
   window.addEventListener("touchend", handleEnd);
   
-  // ▲▲▲ スマホ対応ここまで ▲▲▲
-
   undoBtn.addEventListener("click", () => { if(history.length > 0){ layers = history.pop(); selectedIndex = -1; drawSticker(); } });
   addBtn.addEventListener("click", () => { saveHistory(); layers.push({type:'text', text:textInput.value, color:textColorInput.value, strokeColor:strokeColorInput.value, strokeWidth:5, fontFamily:fontSelect.value, x:250, y:250, scaleX:1, scaleY:1, angle:0, opacity:1}); selectedIndex=layers.length-1; drawSticker(); });
   deleteBtn.addEventListener("click", () => { if(selectedIndex!==-1){ saveHistory(); layers.splice(selectedIndex,1); selectedIndex=-1; drawSticker(); } });
   imageInput.addEventListener("change", (e) => { const r = new FileReader(); r.onload=(f)=>{ const i=new Image(); i.onload=()=>{ saveHistory(); layers.push({type:'image', img:i, originalImg:i, x:250, y:250, scaleX:0.5, scaleY:0.5, angle:0, opacity:1}); selectedIndex=layers.length-1; drawSticker(); }; i.src=f.target.result; }; r.readAsDataURL(e.target.files[0]); });
   
-  // 手書きボタン
   drawModeBtn.addEventListener("click", () => { 
-    isDrawingMode = !isDrawingMode; 
-    isEraserMode = false; // 消しゴムは解除
+    isDrawingMode = !isDrawingMode; isEraserMode = false;
     drawModeBtn.innerText = isDrawingMode ? "🖊 手書き ON" : "🖊 手書き OFF"; 
     drawModeBtn.classList.toggle("draw-active", isDrawingMode); 
-    eraserBtn.classList.remove("draw-active"); // 消しゴムボタンの見た目を戻す
-    selectedIndex = -1; drawSticker(); 
+    eraserBtn.classList.remove("draw-active"); selectedIndex = -1; drawSticker(); 
   });
 
-  // 消しゴムボタン
   eraserBtn.addEventListener("click", () => {
-    isEraserMode = !isEraserMode;
-    isDrawingMode = false; // 手書きは解除
+    isEraserMode = !isEraserMode; isDrawingMode = false;
     eraserBtn.classList.toggle("draw-active", isEraserMode);
-    drawModeBtn.classList.remove("draw-active"); // 手書きボタンの見た目を戻す
-    drawModeBtn.innerText = "🖊 手書き OFF";
+    drawModeBtn.classList.remove("draw-active"); drawModeBtn.innerText = "🖊 手書き OFF";
     selectedIndex = -1; drawSticker();
   });
 
