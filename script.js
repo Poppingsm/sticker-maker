@@ -54,22 +54,25 @@ document.addEventListener("DOMContentLoaded", () => {
     context.lineWidth = width;
     context.lineCap = style === 'marker' ? 'square' : 'round';
     context.lineJoin = 'round';
-   if (style === 'spray') {
-  path.forEach(p => {
-    // 粒の数を固定で多くする（現在は15 → 50に増量）
-    for (let i = 0; i < 50; i++) {
-      // 範囲は太さの1.2倍
-      const offset = width * 1.2;
-      const x = p.x + (Math.random() - 0.5) * offset;
-      const y = p.y + (Math.random() - 0.5) * offset;
-      
-      context.fillStyle = color;
-      // 粒を大きく（2px固定）
-      context.fillRect(x, y, 2, 2);
+    
+    // ▼ スプレーの書き味修正（円形に散るタイプ）
+    if (style === 'spray') {
+      path.forEach(p => {
+        const density = width * 1.5; 
+        for (let i = 0; i < density; i++) {
+          const radius = width * Math.random();
+          const angle = Math.random() * Math.PI * 2;
+          const x = p.x + Math.cos(angle) * radius;
+          const y = p.y + Math.sin(angle) * radius;
+          context.fillStyle = color;
+          const dotSize = Math.random() + 0.5;
+          context.fillRect(x, y, dotSize, dotSize);
+        }
+      });
+      return;
     }
-  });
-  return;
-}
+    // ▲ スプレー修正ここまで
+
     context.beginPath(); context.moveTo(path[0].x, path[0].y);
     path.forEach(p => context.lineTo(p.x, p.y)); context.stroke();
   }
@@ -99,10 +102,9 @@ document.addEventListener("DOMContentLoaded", () => {
       ctx.globalAlpha = l.opacity;
       const m = getLayerMetrics(l), curW = m.width * l.scaleX, curH = m.height * l.scaleY;
 
-      // 描画
       if (l.type === 'image') { ctx.drawImage(l.img, -curW/2, -curH/2, curW, curH); }
       else if (l.type === 'text') {
-        ctx.save(); // 文字変形用
+        ctx.save();
         ctx.scale(l.scaleX, l.scaleY); 
         ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.font = `bold 60px ${l.fontFamily}`;
         if (l.strokeWidth > 0) { ctx.strokeStyle = l.strokeColor; ctx.lineWidth = l.strokeWidth; ctx.lineJoin = "round"; ctx.strokeText(l.text, 0, 0); }
@@ -114,16 +116,14 @@ document.addEventListener("DOMContentLoaded", () => {
         ctx.restore();
       }
 
-      // 選択枠とハンドルの描画（スケーリングの影響を受けないようにする）
       if (idx === selectedIndex && !isExporting) {
         ctx.strokeStyle = "#007bff";
         ctx.setLineDash([5, 5]);
-        ctx.lineWidth = 1; // 枠線の太さを固定
+        ctx.lineWidth = 1;
         ctx.strokeRect(-curW/2-10, -curH/2-10, curW+20, curH+20);
         
         ctx.setLineDash([]);
         ctx.fillStyle = "#007bff";
-        // ハンドルを常に固定サイズで描画
         [ [curW/2+10, 0, "w"], [0, curH/2+10, "h"], [curW/2+10, curH/2+10, "both"] ].forEach(h => {
           ctx.beginPath(); ctx.arc(h[0], h[1], HANDLE_R, 0, Math.PI*2); ctx.fill();
         });
@@ -148,18 +148,35 @@ document.addEventListener("DOMContentLoaded", () => {
 
   [textInput, fontSelect, textColorInput, strokeColorInput, strokeWidthInput, opacityInput, bgColorInput].forEach(el => el.addEventListener("input", applyChange));
 
-  canvas.addEventListener("mousedown", (e) => {
-    const r = canvas.getBoundingClientRect(), mx = e.clientX - r.left, my = e.clientY - r.top;
+  // ▼▼▼ スマホ対応版イベント処理（ここから変更） ▼▼▼
+
+  const getPos = (e) => {
+    const r = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / r.width;
+    const scaleY = canvas.height / r.height;
+    const isTouch = e.touches && e.touches.length > 0;
+    const clientX = isTouch ? e.touches[0].clientX : e.clientX;
+    const clientY = isTouch ? e.touches[0].clientY : e.clientY;
+    return { x: (clientX - r.left) * scaleX, y: (clientY - r.top) * scaleY };
+  };
+
+  const handleStart = (e) => {
+    if (e.cancelable) e.preventDefault(); 
+    const {x: mx, y: my} = getPos(e);
+
     if (isDrawingMode) { saveHistory(); isDrawing = true; currentPath = [{x: mx, y: my}]; return; }
 
     if (selectedIndex !== -1) {
       const l = layers[selectedIndex], m = getLayerMetrics(l), curW = m.width * l.scaleX, curH = m.height * l.scaleY;
       const cos = Math.cos(l.angle), sin = Math.sin(l.angle);
       const rx = (mx - l.x) * cos + (my - l.y) * sin, ry = -(mx - l.x) * sin + (my - l.y) * cos;
-      if (Math.hypot(rx - 0, ry - (-curH/2-30)) < 20) { isRotating = true; startMouseAngle = Math.atan2(mx - l.x, my - l.y); startLayerAngle = l.angle; saveHistory(); return; }
-      if (Math.hypot(rx - (curW/2+10), ry - 0) < 15) { isResizing = true; resizeMode = "w"; saveHistory(); return; }
-      if (Math.hypot(rx - 0, ry - (curH/2+10)) < 15) { isResizing = true; resizeMode = "h"; saveHistory(); return; }
-      if (Math.hypot(rx - (curW/2+10), ry - (curH/2+10)) < 15) { isResizing = true; resizeMode = "both"; saveHistory(); return; }
+      
+      if (Math.hypot(rx - 0, ry - (-curH/2-30)) < 20) { 
+        isRotating = true; startMouseAngle = Math.atan2(mx - l.x, my - l.y); startLayerAngle = l.angle; saveHistory(); return; 
+      }
+      if (Math.hypot(rx - (curW/2+10), ry - 0) < 25) { isResizing = true; resizeMode = "w"; saveHistory(); return; }
+      if (Math.hypot(rx - 0, ry - (curH/2+10)) < 25) { isResizing = true; resizeMode = "h"; saveHistory(); return; }
+      if (Math.hypot(rx - (curW/2+10), ry - (curH/2+10)) < 25) { isResizing = true; resizeMode = "both"; saveHistory(); return; }
     }
 
     for (let i = layers.length - 1; i >= 0; i--) {
@@ -173,10 +190,14 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     }
     selectedIndex = -1; drawSticker();
-  });
+  };
 
-  window.addEventListener("mousemove", (e) => {
-    const r = canvas.getBoundingClientRect(), mx = e.clientX - r.left, my = e.clientY - r.top;
+  const handleMove = (e) => {
+    if (e.cancelable) e.preventDefault();
+    if (!isDragging && !isResizing && !isRotating && !isDrawing) return;
+
+    const {x: mx, y: my} = getPos(e);
+
     if (isDrawingMode && isDrawing) {
       currentPath.push({x: mx, y: my}); drawSticker();
       drawPath(ctx, currentPath, drawColorInput.value, drawWidthInput.value, brushStyleSelect.value);
@@ -194,16 +215,25 @@ document.addEventListener("DOMContentLoaded", () => {
       layers[selectedIndex].x = showGuideX ? 250 : tx; layers[selectedIndex].y = showGuideY ? 250 : ty;
       drawSticker();
     }
-  });
+  };
 
-  window.addEventListener("mouseup", () => {
+  const handleEnd = () => {
     if (isDrawing) {
       const m = getLayerMetrics({type:'draw', path: currentPath, scaleX:1, scaleY:1});
       layers.push({type:'draw', path:[...currentPath], color:drawColorInput.value, width:parseInt(drawWidthInput.value), style:brushStyleSelect.value, x:m.ox, y:m.oy, scaleX:1, scaleY:1, angle:0, opacity:1});
       isDrawing = false;
     }
     isDragging = isResizing = isRotating = false; showGuideX = showGuideY = false; drawSticker();
-  });
+  };
+
+  canvas.addEventListener("mousedown", handleStart);
+  window.addEventListener("mousemove", handleMove);
+  window.addEventListener("mouseup", handleEnd);
+  canvas.addEventListener("touchstart", handleStart, { passive: false });
+  window.addEventListener("touchmove", handleMove, { passive: false });
+  window.addEventListener("touchend", handleEnd);
+  
+  // ▲▲▲ スマホ対応ここまで ▲▲▲
 
   undoBtn.addEventListener("click", () => { if(history.length > 0){ layers = history.pop(); selectedIndex = -1; drawSticker(); } });
   addBtn.addEventListener("click", () => { saveHistory(); layers.push({type:'text', text:textInput.value, color:textColorInput.value, strokeColor:strokeColorInput.value, strokeWidth:5, fontFamily:fontSelect.value, x:250, y:250, scaleX:1, scaleY:1, angle:0, opacity:1}); selectedIndex=layers.length-1; drawSticker(); });
