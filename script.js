@@ -54,16 +54,22 @@ document.addEventListener("DOMContentLoaded", () => {
     context.lineWidth = width;
     context.lineCap = style === 'marker' ? 'square' : 'round';
     context.lineJoin = 'round';
-    if (style === 'spray') {
-      path.forEach(p => {
-        for (let i = 0; i < 15; i++) {
-          const offset = width * 1.5;
-          const x = p.x + (Math.random() - 0.5) * offset, y = p.y + (Math.random() - 0.5) * offset;
-          context.fillStyle = color; context.fillRect(x, y, 1, 1);
-        }
-      });
-      return;
+   if (style === 'spray') {
+  path.forEach(p => {
+    // 粒の数を固定で多くする（現在は15 → 50に増量）
+    for (let i = 0; i < 50; i++) {
+      // 範囲は太さの1.2倍
+      const offset = width * 1.2;
+      const x = p.x + (Math.random() - 0.5) * offset;
+      const y = p.y + (Math.random() - 0.5) * offset;
+      
+      context.fillStyle = color;
+      // 粒を大きく（2px固定）
+      context.fillRect(x, y, 2, 2);
     }
+  });
+  return;
+}
     context.beginPath(); context.moveTo(path[0].x, path[0].y);
     path.forEach(p => context.lineTo(p.x, p.y)); context.stroke();
   }
