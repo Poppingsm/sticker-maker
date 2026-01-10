@@ -56,33 +56,40 @@ document.addEventListener("DOMContentLoaded", () => {
     return { width: ctx.measureText(l.text).width, height: 60 };
   }
 
-  // 描画パスのレンダリング
+ // 描画パスのレンダリング関数
   function drawPath(context, path, color, width, style) {
     context.save(); // 設定を保存
 
-    // ▼ ここを修正：消しゴムなら「透明にするモード」に切り替え
+    // ▼▼▼ 【修正点】消しゴムの処理 ▼▼▼
     if (style === 'eraser') {
-      context.globalCompositeOperation = 'destination-out'; // 重なった部分を消す
-      context.strokeStyle = "rgba(0,0,0,1)"; // 色は何でも良い（消えるので）
+      // 重なった部分を「透明」にするモード
+      context.globalCompositeOperation = 'destination-out';
+      
+      // ★ここが重要：万が一モードが効かなくても「白」で塗るように変更
+      context.strokeStyle = "rgba(255,255,255,1)"; 
+      
       context.lineWidth = width;
       context.lineCap = 'round';
       context.lineJoin = 'round';
+      
       context.beginPath(); 
       context.moveTo(path[0].x, path[0].y);
       path.forEach(p => context.lineTo(p.x, p.y)); 
       context.stroke();
+      
       context.restore(); // 設定を戻す
       return;
     }
+    // ▲▲▲ 消しゴム修正ここまで ▲▲▲
 
-    // 通常のペンの処理
-    context.globalCompositeOperation = 'source-over'; // 上書きモード
+    // 通常ペンの処理（上書きモード）
+    context.globalCompositeOperation = 'source-over';
     context.strokeStyle = color;
     context.lineWidth = width;
     context.lineCap = style === 'marker' ? 'square' : 'round';
     context.lineJoin = 'round';
     
-    // エアブラシ
+    // エアブラシ風スプレー
     if (style === 'spray') {
       path.forEach(p => {
         const density = width * 5; 
@@ -103,6 +110,7 @@ document.addEventListener("DOMContentLoaded", () => {
     path.forEach(p => context.lineTo(p.x, p.y)); context.stroke();
     context.restore();
   }
+
 
   // キャンバス全体の描画
   function drawSticker() {
