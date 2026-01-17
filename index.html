@@ -3,13 +3,12 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ステッカーメーカー（ギャラリー機能付き）</title>
+<title>ステッカーメーカー（人気順ギャラリー）</title>
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/selfie_segmentation.js"></script>
 <style>
   body { font-family: "Helvetica Neue", Arial, sans-serif; text-align: center; background-color: #f4f6f8; margin: 0; padding: 20px; color: #333; }
   h1 { margin-bottom: 20px; color: #2c3e50; }
   
-  /* キャンバスのデザイン */
   canvas { 
     border: 2px solid #ddd; 
     background-image: linear-gradient(45deg, #eee 25%, transparent 25%, transparent 75%, #eee 75%), linear-gradient(45deg, #eee 25%, transparent 25%, transparent 75%, #eee 75%); 
@@ -22,12 +21,10 @@
     touch-action: none; 
   }
 
-  /* 操作パネル */
   .controls { margin-top: 20px; display: flex; flex-wrap: wrap; gap: 15px; justify-content: center; max-width: 800px; margin-left: auto; margin-right: auto; }
   .control-group { background: white; padding: 15px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); display: flex; flex-direction: column; gap: 8px; min-width: 160px; flex: 1; }
   label { font-size: 13px; font-weight: bold; color: #555; display: block; margin-bottom: 4px; border-bottom: 2px solid #f0f0f0; padding-bottom: 4px;}
   
-  /* ボタンと入力フォーム */
   button { padding: 8px 14px; cursor: pointer; background: #3498db; color: white; border: none; border-radius: 6px; font-size: 14px; transition: 0.2s; font-weight: bold; }
   button:hover { background: #2980b9; transform: translateY(-1px); }
   button:active { transform: translateY(1px); }
@@ -41,18 +38,34 @@
   .draw-active { background: #e74c3c !important; animation: pulse 1.5s infinite; }
   @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(231, 76, 60, 0.4); } 70% { box-shadow: 0 0 0 10px rgba(231, 76, 60, 0); } 100% { box-shadow: 0 0 0 0 rgba(231, 76, 60, 0); } }
 
-  /* ギャラリーモーダル */
   #galleryModal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 1000; overflow-y: auto; backdrop-filter: blur(5px); }
   .gallery-content { background: white; width: 90%; max-width: 900px; margin: 40px auto; padding: 25px; border-radius: 12px; box-shadow: 0 20px 50px rgba(0,0,0,0.3); }
   .gallery-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 1px solid #eee; padding-bottom: 10px; }
   .gallery-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 20px; }
-  .gallery-item { border: 1px solid #eee; border-radius: 8px; padding: 10px; cursor: pointer; transition: 0.3s; background: #fff; }
+  .gallery-item { border: 1px solid #eee; border-radius: 8px; padding: 10px; cursor: pointer; transition: 0.3s; background: #fff; position: relative; display: flex; flex-direction: column; }
   .gallery-item:hover { transform: translateY(-5px); box-shadow: 0 10px 20px rgba(0,0,0,0.1); border-color: #3498db; }
   .gallery-item img { width: 100%; height: 150px; object-fit: contain; background: #f9f9f9; border-radius: 4px; margin-bottom: 10px; }
-  .gallery-info { font-size: 12px; color: #666; line-height: 1.4; }
+  .gallery-info { font-size: 11px; color: #888; margin-top: 4px; }
   .gallery-name { font-weight: bold; font-size: 14px; color: #333; display: block; margin-bottom: 2px;}
   .close-btn { font-size: 28px; cursor: pointer; color: #888; font-weight: bold; }
   .close-btn:hover { color: #333; }
+
+  .like-btn { 
+    margin-top: 8px; 
+    background: #fff; 
+    color: #e74c3c; 
+    border: 1px solid #e74c3c; 
+    padding: 4px 8px; 
+    font-size: 12px; 
+    border-radius: 20px; 
+    display: inline-flex; 
+    align-items: center; 
+    justify-content: center; 
+    gap: 4px;
+    transition: 0.2s;
+  }
+  .like-btn:hover:not(:disabled) { background: #fee2e2; }
+  .like-btn:disabled { color: #ccc; border-color: #ccc; cursor: default; }
 </style>
 </head>
 <body>
@@ -101,11 +114,15 @@
   <div class="control-group">
     <label>⚙️ 編集</label>
     <div style="display:flex; justify-content:space-between; font-size:12px;">
-       <span>背景色</span> <span>透明度</span>
+        <span>背景色</span> <span>透明度</span>
     </div>
     <div style="display:flex; gap:5px; align-items:center;">
         <input type="color" id="bgColor" value="#ffffff" title="背景色">
         <input type="range" id="opacity" min="0" max="1" step="0.1" value="1" title="透明度">
+    </div>
+    <div style="display:flex; gap:5px;">
+        <button id="bringToFront" style="flex:1; background:#9b59b6;">🔝 最前面</button>
+        <button id="sendToBack" style="flex:1; background:#9b59b6;">🔙 最背面</button>
     </div>
     <button id="undoBtn">↩ 元に戻す</button>
     <button id="deleteBtn" class="danger">🗑 選択削除</button>
@@ -115,7 +132,7 @@
   <div class="control-group" style="border: 2px solid #3498db; background: #eaf6fd;">
     <label>☁️ みんなのギャラリー</label>
     <button id="saveProjectBtn" class="success">☁️ 作品を投稿</button>
-    <button id="galleryBtn" class="warning">📚 みんなの作品を見る</button>
+    <button id="galleryBtn" class="warning">🏆 人気ランキング</button>
     <button id="loadProjectBtn" style="background:#7f8c8d;">📂 保存データ読込</button>
   </div>
 </div>
@@ -123,19 +140,15 @@
 <div id="galleryModal">
   <div class="gallery-content">
     <div class="gallery-header">
-      <h2 style="margin:0;">みんなの作品ギャラリー</h2>
+      <h2 style="margin:0;">みんなの作品（人気順）</h2>
       <span class="close-btn" id="closeGallery">&times;</span>
     </div>
-    <p style="text-align:left; color:#666;">クリックするとキャンバスに読み込まれます（現在の作業内容は上書きされます）</p>
-    <div id="galleryGrid" class="gallery-grid">
-      </div>
+    <p style="text-align:left; color:#666; font-size: 12px;">❤️が多い作品が最初に出てきます。いいねは1作品につき1回まで！</p>
+    <div id="galleryGrid" class="gallery-grid"></div>
   </div>
 </div>
 
 <script type="module">
-  // ---------------------------------------------------------
-  // 1. Firebaseの設定と初期化
-  // ---------------------------------------------------------
   const firebaseConfig = {
     apiKey: "AIzaSyAKMmpxfan5I0GEq7STopiXMI6x7e2KOIM",
     authDomain: "sticker-app-f23ac.firebaseapp.com",
@@ -146,28 +159,17 @@
     measurementId: "G-M5P6P7CXSZ"
   };
 
-  // CDNからFirebaseライブラリをインポート
   import { initializeApp } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js";
-  import { getFirestore, collection, addDoc, getDocs, query, orderBy, limit } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js";
+  import { getFirestore, collection, addDoc, getDocs, query, orderBy, limit, doc, updateDoc, increment } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js";
 
   let db;
   try {
     const app = initializeApp(firebaseConfig);
     db = getFirestore(app);
-    console.log("Firebase initialized successfully");
-  } catch (e) {
-    console.error("Firebase init error:", e);
-    alert("Firebaseの初期化に失敗しました。設定を確認してください。");
-  }
+  } catch (e) { console.error(e); }
 
-
-  // ---------------------------------------------------------
-  // 2. キャンバス・描画ロジック (手書き固定対応版)
-  // ---------------------------------------------------------
   const canvas = document.getElementById("sticker");
   const ctx = canvas.getContext("2d");
-
-  // UI要素の取得
   const textInput = document.getElementById("text"), fontSelect = document.getElementById("fontFamily");
   const textColorInput = document.getElementById("textColor"), strokeColorInput = document.getElementById("strokeColor");
   const strokeWidthInput = document.getElementById("strokeWidth"), bgColorInput = document.getElementById("bgColor");
@@ -178,30 +180,28 @@
   const drawColorInput = document.getElementById("drawColor"), drawWidthInput = document.getElementById("drawWidth"), brushStyleSelect = document.getElementById("brushStyle");
   const saveProjectBtn = document.getElementById("saveProjectBtn"), loadProjectBtn = document.getElementById("loadProjectBtn");
   const galleryBtn = document.getElementById("galleryBtn"), galleryModal = document.getElementById("galleryModal"), closeGallery = document.getElementById("closeGallery"), galleryGrid = document.getElementById("galleryGrid");
+  const bringToFrontBtn = document.getElementById("bringToFront"), sendToBackBtn = document.getElementById("sendToBack");
 
-  // アプリの状態変数
   let layers = [];
   let history = [];
   let selectedIndex = -1;
   let isDragging = false, isResizing = false, isRotating = false, isExporting = false; 
   let resizeMode = ""; 
   let isDrawingMode = false, isEraserMode = false, isDrawing = false, currentPath = [];
-  let offsetX = 0, offsetY = 0, startMouseAngle = 0, startLayerAngle = 0, showGuideX = false, showGuideY = false;
+  let offsetX = 0, offsetY = 0, startMouseAngle = 0, startLayerAngle = 0;
   const SNAP_LIMIT = 12, GRID_SIZE = 25, MAX_HISTORY = 20, HANDLE_R = 8;
 
-  // 手書き合成用キャンバス
   const drawingCanvas = document.createElement("canvas");
   drawingCanvas.width = 500; drawingCanvas.height = 500;
   const drawCtx = drawingCanvas.getContext("2d");
 
-  // 履歴保存
+  // --- 描画・編集機能 (省略なし) ---
   function saveHistory() {
     const state = layers.map(l => ({...l, path: l.path ? l.path.map(p => ({...p})) : null}));
     history.push(state);
     if (history.length > MAX_HISTORY) history.shift();
   }
 
-  // レイヤーのサイズ計算
   function getLayerMetrics(l) {
     if (l.type === 'image') return { width: l.img.width, height: l.img.height };
     if (l.type === 'draw') {
@@ -213,7 +213,6 @@
     return { width: ctx.measureText(l.text).width, height: 60 };
   }
 
-  // パスの描画関数
   function drawPath(context, path, color, width, style) {
     context.save();
     if (style === 'eraser') {
@@ -240,28 +239,18 @@
     context.restore();
   }
 
-  // メイン描画ループ
   function drawSticker() {
-    // もし選択中レイヤーが「draw（手書き）」なら強制解除
-    if (selectedIndex !== -1 && layers[selectedIndex] && layers[selectedIndex].type === 'draw') {
-        selectedIndex = -1;
-    }
-
-    // 1. 背景
+    if (selectedIndex !== -1 && layers[selectedIndex] && layers[selectedIndex].type === 'draw') selectedIndex = -1;
     ctx.globalCompositeOperation = 'source-over';
     ctx.fillStyle = bgColorInput.value;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-    
-    // 2. グリッド
     if (!isExporting) {
       ctx.save(); ctx.setLineDash([2, 4]); ctx.strokeStyle = "rgba(0,0,0,0.05)";
       for (let i = GRID_SIZE; i < 500; i += GRID_SIZE) { ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, 500); ctx.stroke(); ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(500, i); ctx.stroke(); }
       ctx.restore();
     }
-
-    // 3. 画像・テキストの描画（奥）
     layers.forEach((l) => {
-      if (l.type === 'draw') return; // 手書きは後回し
+      if (l.type === 'draw') return;
       ctx.save(); ctx.translate(l.x, l.y); ctx.rotate(l.angle || 0); ctx.globalAlpha = l.opacity;
       const m = getLayerMetrics(l), curW = m.width * l.scaleX, curH = m.height * l.scaleY;
       if (l.type === 'image') { ctx.drawImage(l.img, -curW/2, -curH/2, curW, curH); }
@@ -272,8 +261,6 @@
       }
       ctx.restore();
     });
-
-    // 4. 手書きレイヤーの合成（手前）
     drawCtx.clearRect(0, 0, drawingCanvas.width, drawingCanvas.height);
     layers.forEach((l) => {
       if (l.type !== 'draw') return;
@@ -286,8 +273,6 @@
       drawPath(drawCtx, currentPath, drawColorInput.value, drawWidthInput.value, style);
     }
     ctx.drawImage(drawingCanvas, 0, 0);
-
-    // 5. 選択枠（手書き以外のみ）
     if (selectedIndex !== -1 && !isExporting) {
         const l = layers[selectedIndex];
         if (l && l.type !== 'draw') {
@@ -302,60 +287,36 @@
     }
   }
 
-  // ---------------------------------------------------------
-  // 3. マウス・タッチ操作ロジック
-  // ---------------------------------------------------------
   const getPos = (e) => {
     const r = canvas.getBoundingClientRect();
-    const scaleX = canvas.width / r.width;
-    const scaleY = canvas.height / r.height;
     const isTouch = e.touches && e.touches.length > 0;
-    const clientX = isTouch ? e.touches[0].clientX : e.clientX;
-    const clientY = isTouch ? e.touches[0].clientY : e.clientY;
-    return { x: (clientX - r.left) * scaleX, y: (clientY - r.top) * scaleY };
+    return { x: ((isTouch ? e.touches[0].clientX : e.clientX) - r.left) * (canvas.width / r.width), y: ((isTouch ? e.touches[0].clientY : e.clientY) - r.top) * (canvas.height / r.height) };
   };
 
   const handleStart = (e) => {
     if (e.cancelable) e.preventDefault(); 
     const {x: mx, y: my} = getPos(e);
-
-    // 手書きモード
-    if (isDrawingMode || isEraserMode) { 
-      saveHistory(); isDrawing = true; currentPath = [{x: mx, y: my}]; 
-      selectedIndex = -1; drawSticker(); return; 
-    }
-
-    // 既存オブジェクトの回転・拡縮操作
+    if (isDrawingMode || isEraserMode) { saveHistory(); isDrawing = true; currentPath = [{x: mx, y: my}]; selectedIndex = -1; drawSticker(); return; }
     if (selectedIndex !== -1) {
       const l = layers[selectedIndex];
-      // 手書きレイヤーなら操作不可
-      if (l.type === 'draw') { selectedIndex = -1; drawSticker(); return; }
-
-      const m = getLayerMetrics(l), curW = m.width * l.scaleX, curH = m.height * l.scaleY;
-      const cos = Math.cos(l.angle), sin = Math.sin(l.angle);
-      const rx = (mx - l.x) * cos + (my - l.y) * sin, ry = -(mx - l.x) * sin + (my - l.y) * cos;
-      
-      if (Math.hypot(rx - 0, ry - (-curH/2-30)) < 20) { isRotating = true; startMouseAngle = Math.atan2(mx - l.x, my - l.y); startLayerAngle = l.angle; saveHistory(); return; }
-      if (Math.hypot(rx - (curW/2+10), ry - 0) < 25) { isResizing = true; resizeMode = "w"; saveHistory(); return; }
-      if (Math.hypot(rx - 0, ry - (curH/2+10)) < 25) { isResizing = true; resizeMode = "h"; saveHistory(); return; }
-      if (Math.hypot(rx - (curW/2+10), ry - (curH/2+10)) < 25) { isResizing = true; resizeMode = "both"; saveHistory(); return; }
+      if (l.type !== 'draw') {
+        const m = getLayerMetrics(l), curW = m.width * l.scaleX, curH = m.height * l.scaleY;
+        const cos = Math.cos(l.angle), sin = Math.sin(l.angle);
+        const rx = (mx - l.x) * cos + (my - l.y) * sin, ry = -(mx - l.x) * sin + (my - l.y) * cos;
+        if (Math.hypot(rx - 0, ry - (-curH/2-30)) < 20) { isRotating = true; startMouseAngle = Math.atan2(mx - l.x, my - l.y); startLayerAngle = l.angle; saveHistory(); return; }
+        if (Math.hypot(rx - (curW/2+10), ry - 0) < 25) { isResizing = true; resizeMode = "w"; saveHistory(); return; }
+        if (Math.hypot(rx - 0, ry - (curH/2+10)) < 25) { isResizing = true; resizeMode = "h"; saveHistory(); return; }
+        if (Math.hypot(rx - (curW/2+10), ry - (curH/2+10)) < 25) { isResizing = true; resizeMode = "both"; saveHistory(); return; }
+      }
     }
-
-    // オブジェクト選択（手書きレイヤーは完全に無視）
     for (let i = layers.length - 1; i >= 0; i--) {
       const l = layers[i];
-      if (l.type === 'draw') continue; // ここでスキップすることで選択不可にする
-
+      if (l.type === 'draw') continue;
       const m = getLayerMetrics(l), cos = Math.cos(-l.angle), sin = Math.sin(-l.angle);
       const rx = (mx - l.x) * cos - (my - l.y) * sin, ry = (mx - l.x) * sin + (my - l.y) * cos;
       if (Math.abs(rx) < (m.width*l.scaleX)/2 + 15 && Math.abs(ry) < (m.height*l.scaleY)/2 + 15) {
-        selectedIndex = i; isDragging = true; offsetX = mx - l.x; offsetY = my - l.y;
-        opacityInput.value = l.opacity;
-        if(l.type === 'text') { 
-          textInput.value = l.text; fontSelect.value = l.fontFamily; 
-          textColorInput.value = l.color; strokeColorInput.value = l.strokeColor; 
-          strokeWidthInput.value = l.strokeWidth; 
-        }
+        selectedIndex = i; isDragging = true; offsetX = mx - l.x; offsetY = my - l.y; opacityInput.value = l.opacity;
+        if(l.type === 'text') { textInput.value = l.text; fontSelect.value = l.fontFamily; textColorInput.value = l.color; strokeColorInput.value = l.strokeColor; strokeWidthInput.value = l.strokeWidth; }
         drawSticker(); return;
       }
     }
@@ -366,14 +327,8 @@
     if (e.cancelable) e.preventDefault();
     if (!isDragging && !isResizing && !isRotating && !isDrawing) return;
     const {x: mx, y: my} = getPos(e);
-
-    if ((isDrawingMode || isEraserMode) && isDrawing) { 
-        currentPath.push({x: mx, y: my}); drawSticker(); 
-    }
-    else if (isRotating) { 
-        layers[selectedIndex].angle = startLayerAngle + (startMouseAngle - Math.atan2(mx - layers[selectedIndex].x, my - layers[selectedIndex].y)); 
-        drawSticker(); 
-    }
+    if ((isDrawingMode || isEraserMode) && isDrawing) { currentPath.push({x: mx, y: my}); drawSticker(); }
+    else if (isRotating) { layers[selectedIndex].angle = startLayerAngle + (startMouseAngle - Math.atan2(mx - layers[selectedIndex].x, my - layers[selectedIndex].y)); drawSticker(); }
     else if (isResizing) {
       const l = layers[selectedIndex], m = getLayerMetrics(l), cos = Math.cos(l.angle), sin = Math.sin(l.angle);
       const rx = (mx - l.x) * cos + (my - l.y) * sin, ry = -(mx - l.x) * sin + (my - l.y) * cos;
@@ -381,10 +336,7 @@
       if (resizeMode === "h" || resizeMode === "both") l.scaleY = Math.max(0.1, (ry * 2) / m.height);
       drawSticker();
     } else if (isDragging && selectedIndex !== -1) {
-      if (layers[selectedIndex].type === 'draw') { isDragging = false; return; }
-      let tx = mx - offsetX, ty = my - offsetY;
-      showGuideX = Math.abs(tx - 250) < SNAP_LIMIT; showGuideY = Math.abs(ty - 250) < SNAP_LIMIT;
-      layers[selectedIndex].x = showGuideX ? 250 : tx; layers[selectedIndex].y = showGuideY ? 250 : ty;
+      layers[selectedIndex].x = mx - offsetX; layers[selectedIndex].y = my - offsetY;
       drawSticker();
     }
   };
@@ -392,47 +344,36 @@
   const handleEnd = () => {
     if (isDrawing) {
       const m = getLayerMetrics({type:'draw', path: currentPath, scaleX:1, scaleY:1});
-      const style = isEraserMode ? 'eraser' : brushStyleSelect.value;
-      // 手書きレイヤー追加
-      layers.push({type:'draw', path:[...currentPath], color:drawColorInput.value, width:parseInt(drawWidthInput.value), style: style, x:m.ox, y:m.oy, scaleX:1, scaleY:1, angle:0, opacity:1});
+      layers.push({type:'draw', path:[...currentPath], color:drawColorInput.value, width:parseInt(drawWidthInput.value), style: isEraserMode ? 'eraser' : brushStyleSelect.value, x:m.ox, y:m.oy, scaleX:1, scaleY:1, angle:0, opacity:1});
       isDrawing = false;
     }
-    isDragging = isResizing = isRotating = false; showGuideX = showGuideY = false; drawSticker();
+    isDragging = isResizing = isRotating = false; drawSticker();
   };
 
-  // イベントリスナー登録
   canvas.addEventListener("mousedown", handleStart); window.addEventListener("mousemove", handleMove); window.addEventListener("mouseup", handleEnd);
   canvas.addEventListener("touchstart", handleStart, { passive: false }); window.addEventListener("touchmove", handleMove, { passive: false }); window.addEventListener("touchend", handleEnd);
-  
-  // ---------------------------------------------------------
-  // 4. UIボタン処理 (投稿・ギャラリー含む)
-  // ---------------------------------------------------------
+
   const applyChange = () => {
     if (selectedIndex === -1) { drawSticker(); return; }
     saveHistory();
     const l = layers[selectedIndex];
-    if (l.type === 'text') {
-      l.text = textInput.value; l.fontFamily = fontSelect.value;
-      l.color = textColorInput.value; l.strokeColor = strokeColorInput.value;
-      l.strokeWidth = parseInt(strokeWidthInput.value);
-    }
+    if (l.type === 'text') { l.text = textInput.value; l.fontFamily = fontSelect.value; l.color = textColorInput.value; l.strokeColor = strokeColorInput.value; l.strokeWidth = parseInt(strokeWidthInput.value); }
     l.opacity = parseFloat(opacityInput.value);
     drawSticker();
   };
   [textInput, fontSelect, textColorInput, strokeColorInput, strokeWidthInput, opacityInput, bgColorInput].forEach(el => el.addEventListener("input", applyChange));
 
+  bringToFrontBtn.addEventListener("click", () => { if (selectedIndex === -1) return; saveHistory(); const layer = layers.splice(selectedIndex, 1)[0]; layers.push(layer); selectedIndex = layers.length - 1; drawSticker(); });
+  sendToBackBtn.addEventListener("click", () => { if (selectedIndex === -1) return; saveHistory(); const layer = layers.splice(selectedIndex, 1)[0]; layers.unshift(layer); selectedIndex = 0; drawSticker(); });
   undoBtn.addEventListener("click", () => { if(history.length > 0){ layers = history.pop(); selectedIndex = -1; drawSticker(); } });
   addBtn.addEventListener("click", () => { saveHistory(); layers.push({type:'text', text:textInput.value, color:textColorInput.value, strokeColor:strokeColorInput.value, strokeWidth:5, fontFamily:fontSelect.value, x:250, y:250, scaleX:1, scaleY:1, angle:0, opacity:1}); selectedIndex=layers.length-1; drawSticker(); });
   deleteBtn.addEventListener("click", () => { if(selectedIndex!==-1){ saveHistory(); layers.splice(selectedIndex,1); selectedIndex=-1; drawSticker(); } });
   
   imageInput.addEventListener("change", (e) => { const r = new FileReader(); r.onload=(f)=>{ const i=new Image(); i.onload=()=>{ saveHistory(); layers.push({type:'image', img:i, originalImg:i, x:250, y:250, scaleX:0.5, scaleY:0.5, angle:0, opacity:1}); selectedIndex=layers.length-1; drawSticker(); }; i.src=f.target.result; }; r.readAsDataURL(e.target.files[0]); });
-  
   drawModeBtn.addEventListener("click", () => { isDrawingMode = !isDrawingMode; isEraserMode = false; drawModeBtn.innerText = isDrawingMode ? "🖊 ON" : "🖊 手書き"; drawModeBtn.classList.toggle("draw-active", isDrawingMode); eraserBtn.classList.remove("draw-active"); selectedIndex = -1; drawSticker(); });
   eraserBtn.addEventListener("click", () => { isEraserMode = !isEraserMode; isDrawingMode = false; eraserBtn.classList.toggle("draw-active", isEraserMode); drawModeBtn.classList.remove("draw-active"); drawModeBtn.innerText = "🖊 手書き"; selectedIndex = -1; drawSticker(); });
-  
   saveBtn.addEventListener("click", () => { isExporting=true; selectedIndex=-1; drawSticker(); const a=document.createElement("a"); a.href=canvas.toDataURL(); a.download="sticker.png"; a.click(); isExporting=false; drawSticker(); });
 
-  // 背景削除AI
   const ss = new SelfieSegmentation({locateFile: (f) => `https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/${f}`});
   ss.setOptions({ modelSelection: 1 });
   ss.onResults((res) => {
@@ -442,35 +383,41 @@
   });
   aiRemoveBgBtn.addEventListener("click", async () => { if(selectedIndex!==-1 && layers[selectedIndex].type==='image') await ss.send({image: layers[selectedIndex].originalImg}); });
 
-  // --- ギャラリー・クラウド保存機能 ---
+  // --- ギャラリー・いいね機能 ---
+  
+  // いいね済みのIDを保存するキー
+  const LIKED_KEY = "sticker_liked_ids";
+
+  function getLikedIds() {
+    return JSON.parse(localStorage.getItem(LIKED_KEY) || "[]");
+  }
+
+  function addLikedId(id) {
+    const ids = getLikedIds();
+    if (!ids.includes(id)) {
+      ids.push(id);
+      localStorage.setItem(LIKED_KEY, JSON.stringify(ids));
+    }
+  }
+
   saveProjectBtn.addEventListener("click", async () => {
     if(!db) { alert("Firebase初期化エラー"); return; }
     const name = prompt("作品名を入力してください", "名無しの作品");
     if(!name) return;
-
-    // サムネイル画像の作成
     isExporting = true; selectedIndex = -1; drawSticker();
     const thumbnail = canvas.toDataURL("image/jpeg", 0.5); 
     isExporting = false; drawSticker();
-
     const layersToSave = layers.map(l => {
       let layerData = {...l};
       if(l.type === 'image') { layerData.img = l.img.src; layerData.originalImg = l.originalImg.src; }
       return layerData;
     });
-
-    const docData = { name: name, layers: JSON.stringify(layersToSave), bgColor: bgColorInput.value, thumbnail: thumbnail, createdAt: new Date().toISOString() };
-
+    const docData = { name, layers: JSON.stringify(layersToSave), bgColor: bgColorInput.value, thumbnail, likes: 0, createdAt: new Date().toISOString() };
     try {
       saveProjectBtn.innerText = "送信中...";
       await addDoc(collection(db, "stickers"), docData);
       alert("投稿しました！");
-    } catch (e) {
-      console.error(e);
-      alert("投稿失敗: Firestoreのルール(Test Mode)を確認してください");
-    } finally {
-      saveProjectBtn.innerText = "☁️ 作品を投稿";
-    }
+    } catch (e) { alert("投稿失敗"); } finally { saveProjectBtn.innerText = "☁️ 作品を投稿"; }
   });
 
   galleryBtn.addEventListener("click", async () => {
@@ -478,24 +425,61 @@
     galleryModal.style.display = "block";
     galleryGrid.innerHTML = "<p>読み込み中...</p>";
     try {
-      const q = query(collection(db, "stickers"), orderBy("createdAt", "desc"), limit(20));
+      // いいね数が多い順(desc)に並び替え
+      const q = query(collection(db, "stickers"), orderBy("likes", "desc"), orderBy("createdAt", "desc"), limit(30));
       const querySnapshot = await getDocs(q);
       galleryGrid.innerHTML = "";
-      if (querySnapshot.empty) { galleryGrid.innerHTML = "<p>作品がありません</p>"; return; }
+      
+      const likedIds = getLikedIds();
 
-      querySnapshot.forEach((doc) => {
-        const data = doc.data();
+      querySnapshot.forEach((docSnap) => {
+        const data = docSnap.data();
+        const id = docSnap.id;
+        const isLiked = likedIds.includes(id);
+
         const div = document.createElement("div");
         div.className = "gallery-item";
-        div.innerHTML = `<img src="${data.thumbnail}"><span class="gallery-name">${data.name}</span><span class="gallery-info">${new Date(data.createdAt).toLocaleDateString()}</span>`;
-        div.addEventListener("click", () => {
-            if(confirm(`「${data.name}」を読み込みますか？`)) { loadFromData(data); galleryModal.style.display = "none"; }
+        div.innerHTML = `
+          <img src="${data.thumbnail}">
+          <span class="gallery-name">${data.name}</span>
+          <div style="display:flex; justify-content: space-between; align-items: center;">
+            <button class="like-btn" data-id="${id}" ${isLiked ? 'disabled' : ''}>
+              ${isLiked ? '✅ 済' : '❤️'} <span>${data.likes || 0}</span>
+            </button>
+            <span class="gallery-info">${new Date(data.createdAt).toLocaleDateString()}</span>
+          </div>
+        `;
+        
+        div.addEventListener("click", (e) => {
+          if (e.target.closest('.like-btn')) return;
+          if(confirm(`「${data.name}」を読み込みますか？`)) { loadFromData(data); galleryModal.style.display = "none"; }
         });
+
+        const likeBtn = div.querySelector('.like-btn');
+        likeBtn.addEventListener("click", async (e) => {
+          e.stopPropagation();
+          if (getLikedIds().includes(id)) return; // 念のためのチェック
+
+          const span = likeBtn.querySelector('span');
+          try {
+            const stickerRef = doc(db, "stickers", id);
+            await updateDoc(stickerRef, { likes: increment(1) });
+            
+            // UI更新
+            span.innerText = parseInt(span.innerText) + 1;
+            likeBtn.disabled = true;
+            likeBtn.innerHTML = `✅ 済 <span>${span.innerText}</span>`;
+            
+            // localStorageに保存
+            addLikedId(id);
+          } catch (err) { console.error("Like failed", err); }
+        });
+
         galleryGrid.appendChild(div);
       });
-    } catch (e) {
+    } catch (e) { 
       console.error(e);
-      galleryGrid.innerHTML = "<p>読み込みエラー</p>";
+      galleryGrid.innerHTML = "<p>読み込みエラー</p>"; 
     }
   });
 
@@ -506,31 +490,24 @@
     layers = [];
     const savedLayers = JSON.parse(data.layers);
     let loadedCount = 0;
-    const totalImages = savedLayers.filter(l => l.type === 'image').length;
+    const images = savedLayers.filter(l => l.type === 'image');
     const finishLoad = () => { saveHistory(); selectedIndex = -1; drawSticker(); };
-
     savedLayers.forEach(l => {
       if(l.type === 'image') {
         const img = new Image(); const origImg = new Image();
         img.src = l.img; origImg.src = l.originalImg;
-        img.onload = () => { l.img = img; l.originalImg = origImg; layers.push(l); loadedCount++; if(loadedCount >= totalImages) finishLoad(); };
-        img.onerror = () => { loadedCount++; if(loadedCount >= totalImages) finishLoad(); };
+        img.onload = () => { l.img = img; l.originalImg = origImg; layers.push(l); loadedCount++; if(loadedCount >= images.length) finishLoad(); };
       } else { layers.push(l); }
     });
-    if(totalImages === 0) finishLoad();
+    if(images.length === 0) finishLoad();
   }
 
   loadProjectBtn.addEventListener("click", () => {
      const keys = Object.keys(localStorage).filter(k => k.startsWith("sticker_project_"));
-     if(keys.length === 0) { alert("ローカル保存データなし"); return; }
-     const names = keys.map(k => k.replace("sticker_project_", ""));
-     const name = prompt("読み込むデータ名:\n" + names.join(", "));
-     if(!name) return;
-     const dataStr = localStorage.getItem("sticker_project_" + name);
-     if(dataStr) loadFromData(JSON.parse(dataStr));
+     const name = prompt("読み込むデータ名:\n" + keys.map(k => k.replace("sticker_project_", "")).join(", "));
+     if(name && localStorage.getItem("sticker_project_" + name)) loadFromData(JSON.parse(localStorage.getItem("sticker_project_" + name)));
   });
 
-  // 初期化
   addBtn.click();
 </script>
 </body>
